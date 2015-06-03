@@ -81,7 +81,7 @@ def read(file):
     # 17. Header
     signature = file.read(3)
     version = file.read(3)
-    if signature != 'GIF':
+    if signature != b'GIF':
         raise ImageDecodeException('Not a GIF stream')
 
     stream = GIFStream()
@@ -115,7 +115,7 @@ def read(file):
                 skip_data_sub_blocks(file)
         else:
             # Skip bytes until a valid start character is found
-            print block_type
+            print(block_type)
             pass
         block_type = read_byte(file)
 

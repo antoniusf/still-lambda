@@ -102,33 +102,26 @@ class XlibEventLoop(PlatformEventLoop):
         self._notification_device.set()
 
     def step(self, timeout=None):
-        pending_devices = []
+        # Timeout is from EventLoop.idle(). Return after that timeout or directly
+        # after receiving a new event. None means: block for user input.
 
-        # Check for already pending events
+        # Poll devices to check for already pending events (select.select is not enough)
+        pending_devices = []
         for device in self._select_devices:
             if device.poll():
                 pending_devices.append(device)
 
-        # If nothing was immediately pending, block until there's activity
-        # on a device.
-        if not pending_devices and (timeout is None or timeout > 0.0):
-            iwtd = self._select_devices
-            pending_devices, _, _ = select.select(iwtd, (), (), timeout)
+        # If no devices were ready, wait until one gets ready
+        if not pending_devices:
+            pending_devices, _, _ = select.select(self._select_devices, (), (), timeout)
 
         if not pending_devices:
+            # Notify caller that timeout expired without incoming events
             return False
 
         # Dispatch activity on matching devices
         for device in pending_devices:
             device.select()
 
-        # Dispatch resize events
-        for window in app.windows:
-            if window._needs_resize:
-                window.switch_to()
-                window.dispatch_event('on_resize', 
-                                      window._width, window._height)
-                window.dispatch_event('on_expose')
-                window._needs_resize = False
-
+        # Notify caller that events were handled before timeout expired
         return True

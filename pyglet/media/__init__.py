@@ -40,7 +40,7 @@ video formats.
 
 Playback is handled by the `Player` class, which reads raw data from `Source`
 objects and provides methods for pausing, seeking, adjusting the volume, and
-so on.  The `Player` class implements a the best available audio device
+so on.  The `Player` class implements the best available audio device
 (currently, only OpenAL is supported)::
 
     player = Player()
@@ -51,7 +51,7 @@ associated with a single player by "queuing" it::
     source = load('background_music.mp3')
     player.queue(source)
 
-Use the `Player` to control playback.  
+Use the `Player` to control playback.
 
 If the source contains video, the `Source.video_format` attribute will be
 non-None, and the `Player.texture` attribute will contain the current video
@@ -67,6 +67,14 @@ rather than streamed from disk by wrapping the source in a `StaticSource`::
 The other advantage of a `StaticSource` is that it can be queued on any number
 of players, and so played many times simultaneously.
 
+pyglet relies on Python's garbage collector to release resources when a player
+has finished playing a source. In this way some operations that could affect
+the application performance can be delayed.
+
+The player provides a `Player.delete()` method that can be used to release
+resources immediately. Also an explicit call to `gc.collect()`can be used to
+collect unused resources.
+
 '''
 
 __docformat__ = 'restructuredtext'
@@ -78,6 +86,7 @@ import heapq
 import sys
 import threading
 import time
+import warnings
 
 import pyglet
 from pyglet.compat import bytes_type, BytesIO
@@ -151,7 +160,7 @@ class MediaThread(object):
         the value of `stop` after each sleep or wait and to return if set.
         '''
         if _debug:
-            print 'MediaThread.stop()'
+            print('MediaThread.stop()')
         self.condition.acquire()
         self.stopped = True
         self.condition.notify()
@@ -167,7 +176,7 @@ class MediaThread(object):
 
         '''
         if _debug:
-            print 'MediaThread.sleep(%r)' % timeout
+            print('MediaThread.sleep(%r)' % timeout)
         self.condition.acquire()
         self.condition.wait(timeout)
         self.condition.release()
@@ -179,7 +188,7 @@ class MediaThread(object):
         instead of waiting the full duration of the timeout.
         '''
         if _debug:
-            print 'MediaThread.notify()'
+            print('MediaThread.notify()')
         self.condition.acquire()
         self.condition.notify()
         self.condition.release()
@@ -463,12 +472,12 @@ class Source(object):
     def play(self):
         '''Play the source.
 
-        This is a convenience method which creates a ManagedSoundPlayer for
+        This is a convenience method which creates a Player for
         this source and plays it immediately.
 
-        :rtype: `ManagedSoundPlayer`
+        :rtype: `Player`
         '''
-        player = ManagedSoundPlayer()
+        player = Player()
         player.queue(self)
         player.play()
         return player
@@ -700,11 +709,14 @@ class SourceGroup(object):
     def has_next(self):
         return len(self._sources) > 1
 
-    def next(self, immediate=True):
+    def next_source(self, immediate=True):
         if immediate:
             self._advance()
         else:
             self._advance_after_eos = True
+
+    #: :deprecated: Use `next_source` instead.
+    next = next_source  # old API, worked badly with 2to3
 
     def get_current_source(self):
         if self._sources:
@@ -764,7 +776,7 @@ class SourceGroup(object):
         data.timestamp += self._timestamp_offset
         if eos:
             if _debug:
-                print 'adding on_eos event to audio data'
+                print('adding on_eos event to audio data')
             data.events.append(MediaEvent(0, 'on_eos'))
         return data
 
@@ -963,15 +975,18 @@ class Player(pyglet.event.EventDispatcher):
         self._paused_time = 0.0
 
     def queue(self, source):
-        if (self._groups and
-            source.audio_format == self._groups[-1].audio_format and
-            source.video_format == self._groups[-1].video_format):
-            self._groups[-1].queue(source)
+        if isinstance(source, SourceGroup):
+            self._groups.append(source)
         else:
-            group = SourceGroup(source.audio_format, source.video_format)
-            group.queue(source)
-            self._groups.append(group)
-            self._set_eos_action(self._eos_action)
+            if (self._groups and
+                source.audio_format == self._groups[-1].audio_format and
+                source.video_format == self._groups[-1].video_format):
+                self._groups[-1].queue(source)
+            else:
+                group = SourceGroup(source.audio_format, source.video_format)
+                group.queue(source)
+                self._groups.append(group)
+                self._set_eos_action(self._eos_action)
 
         self._set_playing(self._playing)
 
@@ -1015,13 +1030,23 @@ class Player(pyglet.event.EventDispatcher):
                 self._paused_time = time
             self._audio_player.stop()
 
-    def next(self):
+    def delete(self):
+        self.pause()
+
+        if self._audio_player:
+            self._audio_player.delete()
+            self._audio_player = None
+
+        while self._groups:
+            del self._groups[0]
+
+    def next_source(self):
         if not self._groups:
             return
 
         group = self._groups[0]
         if group.has_next():
-            group.next()
+            group.next_source()
             return
 
         if self.source.video_format:
@@ -1040,9 +1065,12 @@ class Player(pyglet.event.EventDispatcher):
         self._set_playing(False)
         self.dispatch_event('on_player_eos')
 
+    #: :deprecated: Use `next_source` instead.
+    next = next_source  # old API, worked badly with 2to3
+
     def seek(self, time):
         if _debug:
-            print 'Player.seek(%r)' % time
+            print('Player.seek(%r)' % time)
 
         self._paused_time = time
         self.source.seek(time)
@@ -1147,6 +1175,8 @@ class Player(pyglet.event.EventDispatcher):
 
     def _set_eos_action(self, eos_action):
         ''':deprecated:'''
+        warnings.warn('Player.eos_action is deprecated in favor of SourceGroup.loop and SourceGroup.advance_after_eos',
+                      category=DeprecationWarning)
         assert eos_action in (self.EOS_NEXT, self.EOS_STOP, 
                               self.EOS_PAUSE, self.EOS_LOOP)
         self._eos_action = eos_action
@@ -1199,7 +1229,7 @@ class Player(pyglet.event.EventDispatcher):
         :event:
         '''
         if _debug:
-            print 'Player.on_player_eos'
+            print('Player.on_player_eos')
 
     def on_source_group_eos(self):
         '''The current source group ran out of data.
@@ -1209,9 +1239,9 @@ class Player(pyglet.event.EventDispatcher):
 
         :event:
         '''
-        self.next()
+        self.next_source()
         if _debug:
-            print 'Player.on_source_group_eos'
+            print('Player.on_source_group_eos')
 
     def on_eos(self):
         '''
@@ -1219,7 +1249,7 @@ class Player(pyglet.event.EventDispatcher):
         :event:
         '''
         if _debug:
-            print 'Player.on_eos'
+            print('Player.on_eos')
 
 Player.register_event_type('on_eos')
 Player.register_event_type('on_player_eos')
@@ -1227,7 +1257,9 @@ Player.register_event_type('on_source_group_eos')
 
 class ManagedSoundPlayer(Player):
     ''':deprecated: Use `Player`'''
-    pass
+    def __init__(self, *args, **kwargs):
+        warnings.warn('Use `Player` instead.', category=DeprecationWarning)
+        super(ManagedSoundPlayer, self).__init__(*args, **kwargs)
 
 class PlayerGroup(object):
     '''Group of players that can be played and paused simultaneously.
@@ -1378,12 +1410,12 @@ class AbstractSourceLoader(object):
 
 class AVbinSourceLoader(AbstractSourceLoader):
     def load(self, filename, file):
-        import avbin
+        from . import avbin
         return avbin.AVbinSource(filename, file)
 
 class RIFFSourceLoader(AbstractSourceLoader):
     def load(self, filename, file):
-        import riff
+        from . import riff
         return riff.WaveSource(filename, file)
     
 def load(filename, file=None, streaming=True):
@@ -1419,30 +1451,30 @@ def get_audio_driver():
     for driver_name in pyglet.options['audio']:
         try:
             if driver_name == 'pulse':
-                from drivers import pulse
+                from .drivers import pulse
                 _audio_driver = pulse.create_audio_driver()
                 break
             elif driver_name == 'openal':
-                from drivers import openal
+                from .drivers import openal
                 _audio_driver = openal.create_audio_driver()
                 break
             elif driver_name == 'directsound':
-                from drivers import directsound
+                from .drivers import directsound
                 _audio_driver = directsound.create_audio_driver()
                 break
             elif driver_name == 'silent':
                 _audio_driver = get_silent_audio_driver()
                 break
-        except:
+        except Exception as exp:
             if _debug:
-                print 'Error importing driver %s' % driver_name
+                print('Error importing driver %s:\n%s' % (driver_name, str(exp)))
     return _audio_driver
 
 def get_silent_audio_driver():
     global _silent_audio_driver
     
     if not _silent_audio_driver:
-        from drivers import silent
+        from .drivers import silent
         _silent_audio_driver = silent.create_audio_driver()
 
     return _silent_audio_driver
@@ -1457,7 +1489,7 @@ def get_source_loader():
         return _source_loader
 
     try:
-        import avbin
+        from . import avbin
         _source_loader = AVbinSourceLoader()
     except ImportError:
         _source_loader = RIFFSourceLoader()
@@ -1466,7 +1498,7 @@ def get_source_loader():
 _source_loader = None
 
 try:
-    import avbin
+    from . import avbin
     have_avbin = True
 except ImportError:
     have_avbin = False

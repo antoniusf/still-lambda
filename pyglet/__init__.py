@@ -57,7 +57,12 @@ _is_epydoc = hasattr(sys, 'is_epydoc') and sys.is_epydoc
 #:    >>> parse_version(pyglet.version) >= parse_version('1.1')
 #:    True
 #:
-version = '1.2alpha1'
+version = '1.2.2'
+
+# Pyglet platform treats *BSD systems as Linux
+compat_platform = sys.platform
+if "bsd" in compat_platform:
+    compat_platform = "linux-compat"
 
 def _require_ctypes_version(version):
     # Check ctypes version
@@ -111,7 +116,12 @@ if getattr(sys, 'frozen', None):
 #:     the application window is created, and permits GL objects to be
 #:     shared between windows even after they've been closed.  You can
 #:     disable the creation of the shadow window by setting this option to
-#:     False.  Recommended for advanced devlopers only.
+#:     False.
+#:
+#:     Some OpenGL driver implementations may not support shared OpenGL
+#:     contexts and may require disabling the shadow window (and all resources
+#:     must be loaded after the window using them was created).  Recommended
+#:     for advanced developers only.
 #:
 #:     **Since:** pyglet 1.1
 #: vsync
@@ -133,6 +143,14 @@ if getattr(sys, 'frozen', None):
 #:     the 32-bit Carbon implementation.  When python is running in 64-bit mode
 #:     on Mac OS X 10.6 or later, this option is set to True by default.
 #:     Otherwise the Carbon implementation is preferred.
+#:
+#:     **Since:** pyglet 1.2
+#:
+#: search_local_libs
+#:     If False, pyglet won't try to search for libraries in the script
+#:     directory and its `lib` subdirectory. This is useful to load a local
+#:     library instead of the system installed version. This option is set
+#:     to True by default.
 #:
 #:     **Since:** pyglet 1.2
 #:
@@ -159,6 +177,7 @@ options = {
     'xsync': True,
     'xlib_fullscreen_override_redirect': False,
     'darwin_cocoa': False,
+    'search_local_libs': True,
 }
 
 _option_types = {
@@ -188,14 +207,14 @@ _option_types = {
 
 def _choose_darwin_platform():
     """Choose between Darwin's Carbon and Cocoa implementations."""
-    if sys.platform != 'darwin':
+    if compat_platform != 'darwin':
         return
     import struct
     numbits = 8*struct.calcsize("P")
     if numbits == 64:
         import platform
-        osx_version = platform.mac_ver()[0]
-        if osx_version < '10.6':
+        osx_version = platform.mac_ver()[0].split(".")
+        if int(osx_version[0]) == 10 and int(osx_version[1]) < 6:
             raise Exception('pyglet is not compatible with 64-bit Python for versions of Mac OS X prior to 10.6.')
         options['darwin_cocoa'] = True
     else:
@@ -218,7 +237,7 @@ def _read_environment():
             pass
 _read_environment()
 
-if sys.platform == 'cygwin':
+if compat_platform == 'cygwin':
     # This hack pretends that the posix-like ctypes provides windows
     # functionality.  COM does not work with this hack, so there is no
     # DirectSound support.
@@ -241,7 +260,7 @@ def _trace_repr(value, size=40):
 
 def _trace_frame(thread, frame, indent):
     from pyglet import lib
-    if frame.f_code is lib._TraceFunction.__call__.func_code:
+    if frame.f_code is lib._TraceFunction.__call__.__code__:
         is_ctypes = True
         func = frame.f_locals['self']._func
         name = func.__name__
@@ -273,17 +292,17 @@ def _trace_frame(thread, frame, indent):
 
     if indent:
         name = 'Called from %s' % name
-    print '[%d] %s%s %s' % (thread, indent, name, location)
+    print('[%d] %s%s %s' % (thread, indent, name, location))
 
     if _trace_args:
         if is_ctypes:
             args = [_trace_repr(arg) for arg in frame.f_locals['args']]
-            print '  %sargs=(%s)' % (indent, ', '.join(args))
+            print('  %sargs=(%s)' % (indent, ', '.join(args)))
         else:
             for argname in code.co_varnames[:code.co_argcount]:
                 try:
                     argvalue = _trace_repr(frame.f_locals[argname])
-                    print '  %s%s=%s' % (indent, argname, argvalue)
+                    print('  %s%s=%s' % (indent, argname, argvalue))
                 except:
                     pass
 
@@ -303,7 +322,7 @@ def _thread_trace_func(thread):
 
         elif event == 'exception':
             (exception, value, traceback) = arg
-            print 'First chance exception raised:', repr(exception)
+            print('First chance exception raised:', repr(exception))
     return _trace_func
 
 def _install_trace():
@@ -376,23 +395,23 @@ if True:
 # Fool py2exe, py2app into including all top-level modules (doesn't understand
 # lazy loading)
 if False:
-    import app
-    import canvas
-    import clock
-    import com
-    import event
-    import font
-    import gl
-    import graphics
-    import input
-    import image
-    import lib
-    import media
-    import resource
-    import sprite
-    import text
-    import window
+    from . import app
+    from . import canvas
+    from . import clock
+    from . import com
+    from . import event
+    from . import font
+    from . import gl
+    from . import graphics
+    from . import input
+    from . import image
+    from . import lib
+    from . import media
+    from . import resource
+    from . import sprite
+    from . import text
+    from . import window
 
 # Hack around some epydoc bug that causes it to think pyglet.window is None.
 if False:
-    import window
+    from . import window

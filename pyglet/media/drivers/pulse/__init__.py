@@ -8,7 +8,7 @@ __version__ = '$Id: $'
 
 import sys
 
-import lib_pulseaudio as pa
+from . import lib_pulseaudio as pa
 from pyglet.media import AbstractAudioDriver, AbstractAudioPlayer, \
     AbstractListener, MediaException, MediaEvent
 
@@ -26,6 +26,11 @@ def check_not_null(value):
         error = pa.pa_context_errno(context._context)
         raise MediaException(pa.pa_strerror(error))
     return value
+
+def noop(*args):
+    """Empty callback to replace deleted callbacks in PA"""
+    pass
+
 
 class PulseAudioDriver(AbstractAudioDriver):
     _context = None
@@ -57,7 +62,7 @@ class PulseAudioDriver(AbstractAudioDriver):
 
         # Create context
         app_name = self.get_app_name()
-        self._context = pa.pa_context_new(self.mainloop, app_name)
+        self._context = pa.pa_context_new(self.mainloop, app_name.encode('ASCII'))
 
         # Context state callback 
         self._state_cb_func = pa.pa_context_notify_cb_t(self._state_cb)
@@ -84,7 +89,7 @@ class PulseAudioDriver(AbstractAudioDriver):
 
     def _state_cb(self, context, userdata):
         if _debug:
-            print 'context state cb'
+            print('context state cb')
         state = pa.pa_context_get_state(self._context)
         if state in (pa.PA_CONTEXT_READY, 
                      pa.PA_CONTEXT_TERMINATED,
@@ -127,15 +132,15 @@ class PulseAudioDriver(AbstractAudioDriver):
         return sys.argv[0]
 
     def dump_debug_info(self):
-        print 'Client version: ', pa.pa_get_library_version()
+        print('Client version: ', pa.pa_get_library_version())
 
-        print 'Server:         ', pa.pa_context_get_server(self._context)
-        print 'Protocol:       ', pa.pa_context_get_protocol_version(
-            self._context)
-        print 'Server protocol:', pa.pa_context_get_server_protocol_version(
-            self._context)
-        print 'Local context:  ', (
-            pa.pa_context_is_local(self._context) and 'Yes' or 'No')
+        print('Server:         ', pa.pa_context_get_server(self._context))
+        print('Protocol:       ', pa.pa_context_get_protocol_version(
+            self._context))
+        print('Server protocol:', pa.pa_context_get_server_protocol_version(
+            self._context))
+        print('Local context:  ', (
+            pa.pa_context_is_local(self._context) and 'Yes' or 'No'))
 
     def delete(self):
         '''Completely shut down pulseaudio client.'''
@@ -208,7 +213,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
             context.lock()
             # Create stream
             self.stream = pa.pa_stream_new(context._context, 
-                                           str(id(self)),
+                                           str(id(self)).encode('ASCII'),
                                            sample_spec,
                                            channel_map)
             check_not_null(self.stream)
@@ -259,10 +264,8 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         finally:
             context.unlock()
 
-        self.set_volume(self._volume)
-
         if _debug:
-            print 'stream ready'
+            print('stream ready')
 
     def _state_cb(self, stream, data):
         context.signal()
@@ -275,7 +278,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
 
     def _write_cb(self, stream, bytes, data):
         if _debug:
-            print 'write callback: %d bytes' % bytes
+            print('write callback: %d bytes' % bytes)
 
         # Asynchronously update time
         if self._events:
@@ -294,16 +297,16 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         seek_flag = pa.PA_SEEK_RELATIVE
         if self._clear_write:
             if _debug:
-                print 'seek PA_SEEK_RELATIVE_ON_READ'
+                print('seek PA_SEEK_RELATIVE_ON_READ')
             seek_flag = pa.PA_SEEK_RELATIVE_ON_READ
             self._clear_write = False
 
         # Keep writing packets until `bytes` is depleted
         while audio_data and bytes > 0:
             if _debug:
-                print 'packet', audio_data.timestamp
+                print('packet', audio_data.timestamp)
             if _debug and audio_data.events:
-                print 'events', audio_data.events
+                print('events', audio_data.events)
             for event in audio_data.events:
                 event_index = self._write_index + event.timestamp * \
                     self.source_group.audio_format.bytes_per_second
@@ -327,7 +330,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
             self._underflow_is_eos = False
 
             if _debug:
-                print 'write', consumption
+                print('write', consumption)
             if consumption < audio_data.length:
                 audio_data.consume(consumption, self.source_group.audio_format)
                 self._buffered_audio_data = audio_data
@@ -361,10 +364,10 @@ class PulseAudioPlayer(AbstractAudioPlayer):
             self._sync_dispatch_player_event('on_source_group_eos')
             self._underflow_is_eos = False
             if _debug:
-                print 'eos'
+                print('eos')
         else:
             if _debug:
-                print 'underflow'
+                print('underflow')
             # TODO: does PA automatically restart stream when buffered again?
             # XXX: sometimes receive an underflow after EOS... need to filter?
 
@@ -375,7 +378,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         timing_info = pa.pa_stream_get_timing_info(self.stream)
         if not timing_info:
             if _debug:
-                print 'abort _process_events'
+                print('abort _process_events')
             return
 
         read_index = timing_info.contents.read_index
@@ -383,7 +386,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         while self._events and self._events[0][0] < read_index:
             _, event = self._events.pop(0)
             if _debug:
-                print 'dispatch event', event
+                print('dispatch event', event)
             event._sync_dispatch_to_player(self.player)
 
     def _sync_dispatch_player_event(self, event, *args):
@@ -397,19 +400,20 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         
     def delete(self):   
         if _debug:
-            print 'delete'
+            print('delete')
         if not self.stream:
             return
 
         context.lock()
         pa.pa_stream_disconnect(self.stream)
+        pa.pa_stream_set_state_callback(self.stream, pa.pa_stream_notify_cb_t(noop), None)
         context.unlock()
         pa.pa_stream_unref(self.stream)
         self.stream = None
 
     def clear(self):
         if _debug:
-            print 'clear'
+            print('clear')
 
         self._clear_write = True
         self._write_index = self._get_read_index()
@@ -425,7 +429,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
 
     def play(self):
         if _debug:
-            print 'play'
+            print('play')
         context.lock()
         context.async_operation(
              pa.pa_stream_cork(self.stream, 0, 
@@ -445,7 +449,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
 
     def stop(self):
         if _debug:
-            print 'stop'
+            print('stop')
         context.lock()
         context.async_operation(
              pa.pa_stream_cork(self.stream, 1, 
@@ -472,7 +476,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
             read_index = 0
 
         if _debug:
-            print '_get_read_index ->', read_index
+            print('_get_read_index ->', read_index)
         return read_index
 
     def _get_write_index(self):
@@ -483,13 +487,13 @@ class PulseAudioPlayer(AbstractAudioPlayer):
             write_index = 0
 
         if _debug:
-            print '_get_write_index ->', write_index
+            print('_get_write_index ->', write_index)
         return write_index
 
     def get_time(self):
         if not self._read_index_valid:
             if _debug:
-                print 'get_time <_read_index_valid = False> -> None'
+                print('get_time <_read_index_valid = False> -> None')
             return
 
         read_index = self._get_read_index()
@@ -510,7 +514,7 @@ class PulseAudioPlayer(AbstractAudioPlayer):
         time = timestamp + (read_index - write_index) / float(bytes_per_second)
 
         if _debug:
-            print 'get_time ->', time
+            print('get_time ->', time)
         return time
 
     def set_volume(self, volume):

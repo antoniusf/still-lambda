@@ -2,7 +2,7 @@
 # http://developer.apple.com/library/mac/#technotes/tn2007/tn2187.html
 
 import sys
-__LP64__ = (sys.maxint > 2**32)
+__LP64__ = (sys.maxsize > 2**32)
 
 from pyglet.libs.darwin.cocoapy import *
 
@@ -178,6 +178,9 @@ iokit.IOHIDValueGetElement.argtypes = [c_void_p]
 iokit.IOHIDValueGetIntegerValue.restype = CFIndex
 iokit.IOHIDValueGetIntegerValue.argtypes = [c_void_p]
 
+iokit.IOHIDValueGetLength.restype = CFIndex
+iokit.IOHIDValueGetLength.argtypes = [c_void_p]
+
 iokit.IOHIDValueGetTimeStamp.restype = c_uint64
 iokit.IOHIDValueGetTimeStamp.argtypes = [c_void_p]
 
@@ -204,7 +207,14 @@ class HIDValue:
         assert(cf.CFGetTypeID(valueRef) == iokit.IOHIDValueGetTypeID())
         self.valueRef = valueRef
         self.timestamp = iokit.IOHIDValueGetTimeStamp(valueRef)
-        self.intvalue = iokit.IOHIDValueGetIntegerValue(valueRef)
+        self.length = iokit.IOHIDValueGetLength(valueRef)
+        if self.length <= 4:
+            self.intvalue = iokit.IOHIDValueGetIntegerValue(valueRef)
+        else:
+            # Values may be byte data rather than integers.
+            # e.g. the PS3 controller has a 39-byte HIDValue element.
+            # We currently do not try to handle these cases.
+            self.intvalue = None
         elementRef = c_void_p(iokit.IOHIDValueGetElement(valueRef))
         self.element = HIDDeviceElement.get_element(elementRef)
 
@@ -248,7 +258,7 @@ class HIDDevice:
         for x in ('manufacturer', 'product', 'transport', 'vendorID', 'vendorIDSource', 'productID', 
                   'versionNumber', 'serialNumber', 'locationID', 'primaryUsage', 'primaryUsagePage'):
             value = getattr(self, x)
-            print x + ":", value
+            print(x + ":", value)
 
     def unique_identifier(self):
         # Since we can't rely on the serial number, create our own identifier.
@@ -308,7 +318,7 @@ class HIDDevice:
         # Remove self from device lookup table.
         del _device_lookup[sender]
         # Remove device elements from lookup table.
-        for key, value in _element_lookup.items():
+        for key, value in list(_element_lookup.items()):
             if value in self.elements:
                 del _element_lookup[key]
 
@@ -457,9 +467,9 @@ known_cftypes[iokit.IOHIDElementGetTypeID()] = HIDDeviceElement.get_element
 ######################################################################
 # Pyglet interface to HID
 
-from base import Device, Control, AbsoluteAxis, RelativeAxis, Button
-from base import Joystick, AppleRemote
-from base import DeviceExclusiveException
+from .base import Device, Control, AbsoluteAxis, RelativeAxis, Button
+from .base import Joystick, AppleRemote
+from .base import DeviceExclusiveException
 
 _axis_names = {
     (0x01, 0x30): 'x',
@@ -517,7 +527,7 @@ class PygletDevice(Device):
         self._is_open = False
 
     def get_controls(self):
-        return self._controls.values()
+        return list(self._controls.values())
 
     def device_removed(self, hid_device):
         # Called by device when it is unplugged.

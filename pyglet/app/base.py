@@ -8,7 +8,7 @@ __version__ = '$Id: $'
 
 import sys
 import threading
-import Queue
+import queue
 
 from pyglet import app
 from pyglet import clock
@@ -17,11 +17,12 @@ from pyglet import event
 _is_epydoc = hasattr(sys, 'is_epydoc') and sys.is_epydoc
 
 class PlatformEventLoop(object):
-    '''
+    ''' Abstract class, implementation depends on platform.
+    
     :since: pyglet 1.2
     '''
     def __init__(self):
-        self._event_queue = Queue.Queue()
+        self._event_queue = queue.Queue()
         self._is_running = threading.Event()
         self._is_running.clear()
 
@@ -65,7 +66,7 @@ class PlatformEventLoop(object):
         while True:
             try:
                 dispatcher, event, args = self._event_queue.get(False)
-            except Queue.Empty:
+            except queue.Empty:
                 break
 
             dispatcher.dispatch_event(event, *args)
@@ -83,7 +84,7 @@ class PlatformEventLoop(object):
         pass
 
     def step(self, timeout=None):
-        '''TODO in mac/linux: return True if didn't time out'''
+        ''':TODO: in mac/linux: return True if didn't time out'''
         raise NotImplementedError('abstract')
 
     def set_timer(self, func, interval):
@@ -157,7 +158,7 @@ class EventLoop(event.EventDispatcher):
         platform_event_loop = app.platform_event_loop
 
         predictor = self._least_squares()
-        gradient, offset = predictor.next()
+        gradient, offset = next(predictor)
 
         time = self.clock.time
         while not self.has_exit:
@@ -167,8 +168,8 @@ class EventLoop(event.EventDispatcher):
             else:
                 estimate = max(gradient * timeout + offset, 0.0)
             if False:
-                print 'Gradient = %f, Offset = %f' % (gradient, offset)
-                print 'Timeout = %f, Estimate = %f' % (timeout, estimate)
+                print('Gradient = %f, Offset = %f' % (gradient, offset))
+                print('Timeout = %f, Estimate = %f' % (timeout, estimate))
 
             t = time()
             if not platform_event_loop.step(estimate) and estimate != 0.0 and \

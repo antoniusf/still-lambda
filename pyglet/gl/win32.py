@@ -2,7 +2,7 @@
 # $Id:$
 
 from pyglet.canvas.win32 import Win32Canvas
-from base import Config, CanvasConfig, Context
+from .base import Config, CanvasConfig, Context
 
 from pyglet import gl
 from pyglet.gl import gl_info
@@ -159,8 +159,8 @@ class Win32CanvasConfigARB(CanvasConfig):
         super(Win32CanvasConfigARB, self).__init__(canvas, config)
         self._pf = pf
         
-        names = self.attribute_ids.keys()
-        attrs = self.attribute_ids.values()
+        names = list(self.attribute_ids.keys())
+        attrs = list(self.attribute_ids.values())
         attrs = (c_int * len(attrs))(*attrs)
         values = (c_int * len(attrs))()
         
@@ -175,7 +175,9 @@ class Win32CanvasConfigARB(CanvasConfig):
         return isinstance(canvas, Win32Canvas)
 
     def create_context(self, share):
-        if wgl_info.have_extension('WGL_ARB_create_context'):
+        # Workaround for issue on certain Intel cards/drivers.
+        # TODO: Find out if there is a way to query for this problem
+        if wgl_info.have_extension('WGL_ARB_create_context') and gl_info.get_vendor() != 'Intel':
             return Win32ARBContext(self, share)
         else:
             return Win32Context(self, share)

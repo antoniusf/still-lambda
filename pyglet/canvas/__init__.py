@@ -34,26 +34,26 @@
 
 '''Display and screen management.
 
-Rendering is performed on a `Canvas`, which conceptually could be an
-off-screen buffer, the content area of a `Window`, or an entire screen.
-Currently, canvases can only be created with windows (though windows can be
-set fullscreen).
+Rendering is performed on a :class:`Canvas`, which conceptually could be an
+off-screen buffer, the content area of a :class:`pyglet.window.Window`, or an 
+entire screen. Currently, canvases can only be created with windows (though 
+windows can be set fullscreen).
 
-Windows and canvases must belong to a `Display`.  On Windows and Mac OS X
-there is only one display, which can be obtained with `get_display`.  Linux
-supports multiple displays, corresponding to discrete X11 display connections
-and screens.  `get_display` on Linux returns the default display and screen 0
-(``localhost:0.0``); if a particular screen or display is required then
-`Display` can be instantiated directly.
+Windows and canvases must belong to a :class:`Display`.  On Windows and Mac OS 
+X there is only one display, which can be obtained with :func:`get_display`.  
+Linux supports multiple displays, corresponding to discrete X11 display 
+connections and screens.  :func:`get_display` on  Linux returns the default 
+display and screen 0 (``localhost:0.0``); if a particular screen or display is 
+required then :class:`Display` can be instantiated directly.
 
-Within a display one or more screens are attached.  A `Screen` often
+Within a display one or more screens are attached.  A :class:`Screen` often
 corresponds to a physical attached monitor, however a monitor or projector set
-up to clone another screen will not be listed.  Use `Display.get_screens` to
-get a list of the attached screens; these can then be queried for their sizes
-and virtual positions on the desktop.
+up to clone another screen will not be listed.  Use :meth:`Display.get_screens`
+to get a list of the attached screens; these can then be queried for their 
+sizes and virtual positions on the desktop.
 
 The size of a screen is determined by its current mode, which can be changed
-by the application; see the documentation for `Screen`.
+by the application; see the documentation for :class:`Screen`.
 
 :since: pyglet 1.2
 '''
@@ -64,13 +64,13 @@ _is_epydoc = hasattr(sys, 'is_epydoc') and sys.is_epydoc
 def get_display():
     '''Get the default display device.
 
-    If there is already a `Display` connection, that display will be returned.
-    Otherwise, a default `Display` is created and returned.  If multiple
-    display connections are active, an arbitrary one is returned.
+    If there is already a :class:`Display` connection, that display will be 
+    returned. Otherwise, a default :class:`Display` is created and returned.  
+    If multiple display connections are active, an arbitrary one is returned.
 
     :since: pyglet 1.2
 
-    :rtype: `Display`
+    :rtype: :class:`Display`
     '''
     # If there's an existing display, return it (return arbitrary display if
     # there are multiple).
@@ -82,9 +82,10 @@ def get_display():
     return Display()
 
 if _is_epydoc:
-    from pyglet.canvas.base import Display, Screen, Canvas
+    from pyglet.canvas.base import Display, Screen, Canvas, ScreenMode
 else:
-    if sys.platform == 'darwin':
+    from pyglet import compat_platform
+    if compat_platform == 'darwin':
         from pyglet import options as pyglet_options
         if pyglet_options['darwin_cocoa']:
             from pyglet.canvas.cocoa import CocoaDisplay as Display
@@ -94,7 +95,7 @@ else:
             from pyglet.canvas.carbon import CarbonDisplay as Display
             from pyglet.canvas.carbon import CarbonScreen as Screen
             from pyglet.canvas.carbon import CarbonCanvas as Canvas
-    elif sys.platform in ('win32', 'cygwin'):
+    elif compat_platform in ('win32', 'cygwin'):
         from pyglet.canvas.win32 import Win32Display as Display
         from pyglet.canvas.win32 import Win32Screen as Screen
         from pyglet.canvas.win32 import Win32Canvas as Canvas

@@ -34,14 +34,21 @@
 
 '''Application-wide functionality.
 
-Most applications need only call `run` after creating one or more windows
-to begin processing events.  For example, a simple application consisting of
-one window is::
+Applications
+------------
+
+Most applications need only call :func:`run` after creating one or more 
+windows to begin processing events.  For example, a simple application 
+consisting of one window is::
 
     import pyglet
 
     win = pyglet.window.Window()
     pyglet.app.run()
+
+
+Events
+======
 
 To handle events on the main event loop, instantiate it manually.  The
 following example exits the application as soon as any window is closed (the
@@ -54,6 +61,16 @@ default policy is to wait until all windows are closed)::
         event_loop.exit()
 
 :since: pyglet 1.1
+
+
+:attr:`event_loop` is the global event loop.  Applications can replace this
+with their own subclass of :class:`EventLoop` before calling 
+:meth:`EventLoop.run`.
+
+:attr:`platform_event_loop` is the platform-dependent event loop. 
+Applications must not subclass or replace this :class:`PlatformEventLoop` 
+object.
+
 '''
 
 __docformat__ = 'restructuredtext'
@@ -84,7 +101,7 @@ class WeakSet(object):
         del self._dict[value]
 
     def __iter__(self):
-        for key in self._dict.keys():
+        for key in list(self._dict.keys()):
             yield key
 
     def __contains__(self, other):
@@ -95,22 +112,25 @@ class WeakSet(object):
 
 
 
-#: Set of all open displays.  Instances of `Display` are automatically added
-#: to this set upon construction.  The set uses weak references, so displays
-#: are removed from the set when they are no longer referenced.
-#:
-#: :deprecated: Use `pyglet.canvas.get_display`.
-#:
-#: :type: `WeakSet`
 displays = WeakSet()
+'''Set of all open displays.  Instances of :class:`pyglet.canvas.Display` 
+are automatically added to this set upon construction.  The set uses weak 
+references, so displays are removed from the set when they are no longer 
+referenced.
 
-#: Set of all open windows (including invisible windows).  Instances of
-#: `Window` are automatically added to this set upon construction.  The set
-#: uses weak references, so windows are removed from the set when they are no
-#: longer referenced or are closed explicitly.
-#:
-#: :type: `WeakSet`
+:deprecated: Use :func:`pyglet.canvas.get_display`.
+
+:type: :class:`WeakSet`
+'''
+
+
 windows = WeakSet()
+'''Set of all open windows (including invisible windows).  Instances of
+:class:`pyglet.window.Window` are automatically added to this set upon 
+construction. The set uses weak references, so windows are removed from 
+the set when they are no longer referenced or are closed explicitly.
+'''
+
 
 def run():
     '''Begin processing events, scheduled functions and window updates.
@@ -137,30 +157,24 @@ def exit():
     event_loop.exit()
 
 from pyglet.app.base import EventLoop
+from pyglet import compat_platform
 if _is_epydoc:
     from pyglet.app.base import PlatformEventLoop
 else:
-    if sys.platform == 'darwin':
+    if compat_platform == 'darwin':
         from pyglet import options as pyglet_options
         if pyglet_options['darwin_cocoa']:
             from pyglet.app.cocoa import CocoaEventLoop as PlatformEventLoop
         else:
             from pyglet.app.carbon import CarbonEventLoop as PlatformEventLoop
-    elif sys.platform in ('win32', 'cygwin'):
+    elif compat_platform in ('win32', 'cygwin'):
         from pyglet.app.win32 import Win32EventLoop as PlatformEventLoop
     else:
         from pyglet.app.xlib import XlibEventLoop as PlatformEventLoop
 
-#: The global event loop.  Applications can replace this with their own
-#: subclass of `pyglet.app.base.EventLoop` before calling `EventLoop.run`.
-#:
-#: :type: `EventLoop`
+
+
 event_loop = EventLoop()
 
-#: The platform-dependent event loop.  Applications must not subclass or
-#: replace this object.
-#:
-#: :since: pyglet 1.2
-#:
-#: :type: `PlatformEventLoop`
 platform_event_loop = PlatformEventLoop()
+

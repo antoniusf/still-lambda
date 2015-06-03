@@ -35,6 +35,8 @@
 '''
 '''
 
+
+
 __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
@@ -58,11 +60,15 @@ class PILImageDecoder(ImageDecoder):
     def decode(self, file, filename):
         try:
             image = Image.open(file)
-        except Exception, e:
+        except Exception as e:
             raise ImageDecodeException(
                 'PIL cannot read %r: %s' % (filename or file, e))
 
-        image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        try:
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        except Exception as e:
+            raise ImageDecodeException(
+                'PIL failed to transpose %r: %s' % (filename or file, e))
 
         # Convert bitmap and palette images to component
         if image.mode in ('1', 'P'):
@@ -73,7 +79,10 @@ class PILImageDecoder(ImageDecoder):
         type = GL_UNSIGNED_BYTE
         width, height = image.size
 
-        return ImageData(width, height, image.mode, image.tostring())
+        # tostring is deprecated, replaced by tobytes in Pillow (PIL fork)
+        # (1.1.7) PIL still uses it
+        image_data_fn = getattr(image, "tobytes", getattr(image, "tostring"))
+        return ImageData(width, height, image.mode, image_data_fn())
 
 class PILImageEncoder(ImageEncoder):
     def get_file_extensions(self):
@@ -96,14 +105,15 @@ class PILImageEncoder(ImageEncoder):
             format = 'RGBA'
         pitch = -(image.width * len(format))
 
-        # Note: Don't try and use frombuffer(..); different versions of
-        # PIL will orient the image differently.
-        pil_image = Image.fromstring(
+        # fromstring is deprecated, replaced by frombytes in Pillow (PIL fork)
+        # (1.1.7) PIL still uses it
+        image_from_fn = getattr(Image, "frombytes", getattr(Image, "fromstring"))
+        pil_image = image_from_fn(
             format, (image.width, image.height), image.get_data(format, pitch))
 
         try:
             pil_image.save(file, pil_format)
-        except Exception, e:
+        except Exception as e:
             raise ImageEncodeException(e)
 
 def get_decoders():

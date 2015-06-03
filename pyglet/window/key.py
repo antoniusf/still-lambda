@@ -186,8 +186,8 @@ MOD_FUNCTION    = 1 << 9
 #: Accelerator modifier.  On Windows and Linux, this is ``MOD_CTRL``, on
 #: Mac OS X it's ``MOD_COMMAND``.
 MOD_ACCEL       = MOD_CTRL
-import sys as _sys
-if _sys.platform == 'darwin':
+from pyglet import compat_platform
+if compat_platform == 'darwin':
     MOD_ACCEL   = MOD_COMMAND
 
 
@@ -405,7 +405,7 @@ ASCIITILDE    = 0x07e
 
 _key_names = {}
 _motion_names = {}
-for _name, _value in locals().items():
+for _name, _value in list(locals().copy().items()):
     if _name[:2] != '__' and _name.upper() == _name and \
        not _name.startswith('MOD_'):
         if _name.startswith('MOTION_'):

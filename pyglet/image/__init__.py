@@ -128,6 +128,8 @@ use of the data in this arbitrary format).
 
 '''
 
+
+
 __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
@@ -138,7 +140,6 @@ import weakref
 
 from ctypes import *
 from math import ceil
-from StringIO import StringIO
 
 from pyglet import gl
 from pyglet.gl import *
@@ -147,7 +148,7 @@ from pyglet import graphics
 from pyglet.window import *
 
 from pyglet.image import atlas
-from pyglet.compat import asbytes, bytes_type
+from pyglet.compat import asbytes, bytes_type, BytesIO
 
 class ImageException(Exception):
     pass
@@ -175,26 +176,34 @@ def load(filename, file=None, decoder=None):
 
     if not file:
         file = open(filename, 'rb')
-    if not hasattr(file, 'seek'):
-        file = StringIO(file.read())
-
-    if decoder:
-        return decoder.decode(file, filename)
+        opened_file = file
     else:
-        first_exception = None
-        for decoder in codecs.get_decoders(filename):
-            try:
-                image = decoder.decode(file, filename)
-                return image
-            except codecs.ImageDecodeException, e:
-                if (not first_exception or 
-                    first_exception.exception_priority < e.exception_priority):
-                    first_exception = e
-                file.seek(0)
+        opened_file = None
 
-        if not first_exception:
-            raise codecs.ImageDecodeException('No image decoders are available')
-        raise first_exception 
+    if not hasattr(file, 'seek'):
+        file = BytesIO(file.read())
+
+    try:
+        if decoder:
+            return decoder.decode(file, filename)
+        else:
+            first_exception = None
+            for decoder in codecs.get_decoders(filename):
+                try:
+                    image = decoder.decode(file, filename)
+                    return image
+                except codecs.ImageDecodeException as e:
+                    if (not first_exception or
+                        first_exception.exception_priority < e.exception_priority):
+                        first_exception = e
+                    file.seek(0)
+
+            if not first_exception:
+                raise codecs.ImageDecodeException('No image decoders are available')
+            raise first_exception
+    finally:
+        if opened_file:
+            opened_file.close()
 
 def create(width, height, pattern=None):
     '''Create an image optionally filled with the given pattern.
@@ -217,6 +226,14 @@ def create(width, height, pattern=None):
     if not pattern:
         pattern = SolidColorImagePattern()
     return pattern.create_image(width, height)
+
+def color_as_bytes(color):
+    if sys.version.startswith('2'):
+        return '%c%c%c%c' % color
+    else:
+        if len(color) != 4:
+            raise TypeError("color is expected to have 4 components")
+        return bytes(color)
 
 class ImagePattern(object):
     '''Abstract image creation class.'''
@@ -245,7 +262,7 @@ class SolidColorImagePattern(ImagePattern):
                 color to fill with.
 
         '''
-        self.color = '%c%c%c%c' % color
+        self.color = color_as_bytes(color)
 
     def create_image(self, width, height):
         data = self.color * width * height
@@ -269,8 +286,8 @@ class CheckerImagePattern(ImagePattern):
                 bottom-left corners of the image.
 
         '''
-        self.color1 = '%c%c%c%c' % color1
-        self.color2 = '%c%c%c%c' % color2
+        self.color1 = color_as_bytes(color1)
+        self.color2 = color_as_bytes(color2)
 
     def create_image(self, width, height):
         hw = width // 2
@@ -444,7 +461,7 @@ class AbstractImage(object):
                 try:
                     encoder.encode(self, file, filename)
                     return
-                except codecs.ImageDecodeException, e:
+                except codecs.ImageEncodeException as e:
                     first_exception = first_exception or e
                     file.seek(0)
 
@@ -1138,9 +1155,9 @@ class ImageDataRegion(ImageData):
 
         self._ensure_string_data()
         data = self._convert(self._current_format, abs(self._current_pitch))
-        rows = re.findall('.' * abs(self._current_pitch), data, re.DOTALL)
+        rows = re.findall(b'.' * abs(self._current_pitch), data, re.DOTALL)
         rows = [row[x1:x2] for row in rows[self.y:self.y+self.height]]
-        self._current_data = ''.join(rows)
+        self._current_data = b''.join(rows)
         self._current_pitch = self.width * len(self._current_format)
         self._current_texture = None
         self.x = 0
@@ -1744,11 +1761,11 @@ class TextureRegion(Texture):
         owner_v2 = owner.tex_coords[7]
         scale_u = owner_u2 - owner_u1
         scale_v = owner_v2 - owner_v1
-        u1 = x / float(owner.width) * scale_u + owner_u1
-        v1 = y / float(owner.height) * scale_v + owner_v1
-        u2 = (x + width) / float(owner.width) * scale_u + owner_u1
-        v2 = (y + height) / float(owner.height) * scale_v + owner_v1
-        r = z / float(owner.images) + owner.tex_coords[2]
+        u1 = x / owner.width * scale_u + owner_u1
+        v1 = y / owner.height * scale_v + owner_v1
+        u2 = (x + width) / owner.width * scale_u + owner_u1
+        v2 = (y + height) / owner.height * scale_v + owner_v1
+        r = z / owner.images + owner.tex_coords[2]
         self.tex_coords = (u1, v1, r, u2, v1, r, u2, v2, r, u1, v2, r)
 
     def get_image_data(self):
@@ -1864,10 +1881,10 @@ class TileableTexture(Texture):
         The image will be tiled with the bottom-left corner of the destination
         rectangle aligned with the anchor point of this texture.
         '''
-        u1 = self.anchor_x / float(self.width)
-        v1 = self.anchor_y / float(self.height)
-        u2 = u1 + width / float(self.width)
-        v2 = v1 + height / float(self.height)
+        u1 = self.anchor_x / self.width
+        v1 = self.anchor_y / self.height
+        u2 = u1 + width / self.width
+        v2 = v1 + height / self.height
         w, h = width, height
         t = self.tex_coords
         array = (GLfloat * 32)(
@@ -1936,7 +1953,7 @@ class BufferManager(object):
 
         stencil_bits = GLint()
         glGetIntegerv(GL_STENCIL_BITS, byref(stencil_bits))
-        self.free_stencil_bits = range(stencil_bits.value)
+        self.free_stencil_bits = list(range(stencil_bits.value))
 
         self.refs = []
 
@@ -2200,10 +2217,10 @@ class ImageGrid(AbstractImage, AbstractImageSequence):
 
         if item_width is None:
             item_width = \
-                int((image.width - column_padding * (columns - 1)) / columns)
+                (image.width - column_padding * (columns - 1)) // columns
         if item_height is None:
             item_height = \
-                int((image.height - row_padding * (rows - 1)) / rows) 
+                (image.height - row_padding * (rows - 1)) // rows 
         self.image = image
         self.rows = rows
         self.columns = columns
@@ -2240,8 +2257,13 @@ class ImageGrid(AbstractImage, AbstractImageSequence):
 
     def __getitem__(self, index):
         self._update_items()
-        # TODO tuples
-        return self._items[index]
+        if type(index) is tuple:
+            row, column = index
+            assert row >= 0 and column >= 0 and \
+                   row < self.rows and column < self.columns
+            return self._items[row * self.columns + column]
+        else:
+            return self._items[index]
 
     def __iter__(self):
         self._update_items()
@@ -2327,7 +2349,7 @@ class TextureGrid(TextureRegion, UniformTextureSequence):
                 if type(index.start) is tuple:
                     row1, col1 = index.start
                 elif type(index.start) is int:
-                    row1 = index.start / self.columns
+                    row1 = index.start // self.columns
                     col1 = index.start % self.columns
                 assert row1 >= 0 and col1 >= 0 and \
                        row1 < self.rows and col1 < self.columns
@@ -2335,7 +2357,7 @@ class TextureGrid(TextureRegion, UniformTextureSequence):
                 if type(index.stop) is tuple:
                     row2, col2 = index.stop
                 elif type(index.stop) is int:
-                    row2 = index.stop / self.columns
+                    row2 = index.stop // self.columns
                     col2 = index.stop % self.columns
                 assert row2 >= 0 and col2 >= 0 and \
                        row2 <= self.rows and col2 <= self.columns
@@ -2406,7 +2428,7 @@ def load_animation(filename, file=None, decoder=None):
     if not file:
         file = open(filename, 'rb')
     if not hasattr(file, 'seek'):
-        file = StringIO(file.read())
+        file = BytesIO(file.read())
 
     if decoder:
         return decoder.decode(file, filename)
@@ -2416,7 +2438,7 @@ def load_animation(filename, file=None, decoder=None):
             try:
                 image = decoder.decode_animation(file, filename)
                 return image
-            except codecs.ImageDecodeException, e:
+            except codecs.ImageDecodeException as e:
                 first_exception = first_exception or e
                 file.seek(0)
 

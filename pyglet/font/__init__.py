@@ -175,7 +175,7 @@ class GlyphString(object):
         for i, (c, w) in enumerate(
                 zip(self.text[from_index:],
                     self.cumulative_advance[from_index:])):
-            if c in u'\u0020\u200b':
+            if c in '\u0020\u200b':
                 to_index = i + from_index + 1
             if c == '\n':
                 return i + from_index + 1
@@ -565,14 +565,14 @@ class Text(object):
         self._layout.draw()
 
 if not getattr(sys, 'is_epydoc', False):
-    if sys.platform == 'darwin':
+    if pyglet.compat_platform == 'darwin':
         if pyglet.options['darwin_cocoa']:
             from pyglet.font.quartz import QuartzFont
             _font_class = QuartzFont
         else:
             from pyglet.font.carbon import CarbonFont
             _font_class = CarbonFont
-    elif sys.platform in ('win32', 'cygwin'):
+    elif pyglet.compat_platform in ('win32', 'cygwin'):
         if pyglet.options['font'][0] == 'win32':
             from pyglet.font.win32 import Win32Font
             _font_class = Win32Font
@@ -584,6 +584,10 @@ if not getattr(sys, 'is_epydoc', False):
     else:
         from pyglet.font.freetype import FreeTypeFont
         _font_class = FreeTypeFont
+
+def have_font(name):
+    '''Check if specified system font name is available.'''
+    return _font_class.have_font(name)
 
 def load(name=None, size=None, bold=False, italic=False, dpi=None):
     '''Load a font for rendering.
@@ -676,7 +680,7 @@ def add_file(font):
             Filename or file-like object to load fonts from.
 
     '''
-    if type(font) in (str, unicode):
+    if type(font) in (str, str):
         font = open(font, 'rb')
     if hasattr(font, 'read'):
         font = font.read()

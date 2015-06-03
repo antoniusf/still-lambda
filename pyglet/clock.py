@@ -142,12 +142,12 @@ __docformat__ = 'restructuredtext'
 __version__ = '$Id$'
 
 import time
-import sys
 import ctypes
 
 import pyglet.lib
+from pyglet import compat_platform
 
-if sys.platform in ('win32', 'cygwin'):
+if compat_platform in ('win32', 'cygwin'):
     # Win32 Sleep function is only 10-millisecond resolution, so instead
     # use a waitable timer object, which has up to 100-nanosecond resolution
     # (hardware and implementation dependent, of course).
@@ -165,7 +165,7 @@ if sys.platform in ('win32', 'cygwin'):
     _default_time_function = time.clock
 
 else:
-    _c = pyglet.lib.load_library('c', darwin='/usr/lib/libc.dylib')
+    _c = pyglet.lib.load_library('c')
     _c.usleep.argtypes = [ctypes.c_ulong]
 
     class _ClockBase(object):
@@ -943,6 +943,7 @@ class ClockDisplay(object):
 
 def test_clock():
     import getopt
+    import sys
     test_seconds = 1 
     test_fps = 60
     show_fps = False
@@ -972,20 +973,20 @@ def test_clock():
     # Add one because first frame has no update interval.
     n_frames = int(test_seconds * test_fps + 1)
 
-    print 'Testing %f FPS for %f seconds...' % (test_fps, test_seconds)
-    for i in xrange(n_frames):
+    print('Testing %f FPS for %f seconds...' % (test_fps, test_seconds))
+    for i in range(n_frames):
         tick()
         if show_fps:
-            print get_fps()
+            print(get_fps())
     total_time = time.time() - start
     total_error = total_time - test_seconds
-    print 'Total clock error: %f secs' % total_error
-    print 'Total clock error / secs: %f secs/secs' % \
-        (total_error / test_seconds)
+    print('Total clock error: %f secs' % total_error)
+    print('Total clock error / secs: %f secs/secs' % \
+        (total_error / test_seconds))
 
     # Not fair to add the extra frame in this calc, since no-one's interested
     # in the startup situation.
-    print 'Average FPS: %f' % ((n_frames - 1) / total_time)
+    print('Average FPS: %f' % ((n_frames - 1) / total_time))
 
 if __name__ == '__main__':
     test_clock()

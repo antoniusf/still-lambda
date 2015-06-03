@@ -1,11 +1,14 @@
 #!/usr/bin/python
 # $Id: $
 
+import struct
 from ctypes import *
 
 import pyglet
-import constants
-from types import *
+from . import constants
+from .types import *
+
+IS64 = struct.calcsize("P") == 8
 
 _debug_win32 = pyglet.options['debug_win32']
 
@@ -41,7 +44,7 @@ if _debug_win32:
                 if err != 0:
                     for entry in traceback.format_list(traceback.extract_stack()[:-1]):
                         _log_win32.write(entry)
-                    print >> _log_win32, format_error(err)
+                    print(format_error(err), file=_log_win32)
                 return result
             return f
 else:
@@ -147,8 +150,9 @@ _user32.GetClientRect.restype = BOOL
 _user32.GetClientRect.argtypes = [HWND, LPRECT]
 _user32.GetCursorPos.restype = BOOL
 _user32.GetCursorPos.argtypes = [LPPOINT]
-_user32.GetDC.restype = HDC
-_user32.GetDC.argtypes = [HWND]
+# workaround for win 64-bit, see issue #664
+_user32.GetDC.restype = c_void_p # HDC
+_user32.GetDC.argtypes = [c_void_p] # [HWND]
 _user32.GetDesktopWindow.restype = HWND
 _user32.GetDesktopWindow.argtypes = []
 _user32.GetKeyState.restype = c_short
@@ -181,15 +185,16 @@ _user32.RegisterHotKey.restype = BOOL
 _user32.RegisterHotKey.argtypes = [HWND, c_int, UINT, UINT]
 _user32.ReleaseCapture.restype = BOOL
 _user32.ReleaseCapture.argtypes = []
-_user32.ReleaseDC.restype = c_int
-_user32.ReleaseDC.argtypes = [HWND, HDC]
+# workaround for win 64-bit, see issue #664
+_user32.ReleaseDC.restype = c_int32 # c_int
+_user32.ReleaseDC.argtypes = [c_void_p, c_void_p] # [HWND, HDC]
 _user32.ScreenToClient.restype = BOOL
 _user32.ScreenToClient.argtypes = [HWND, LPPOINT]
 _user32.SetCapture.restype = HWND
 _user32.SetCapture.argtypes = [HWND]
 _user32.SetClassLongW.restype = DWORD
 _user32.SetClassLongW.argtypes = [HWND, c_int, LONG]
-if tuple.__itemsize__ == 8:
+if IS64:
     _user32.SetClassLongPtrW.restype = ULONG
     _user32.SetClassLongPtrW.argtypes = [HWND, c_int, LONG_PTR]
 else:

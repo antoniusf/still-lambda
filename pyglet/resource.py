@@ -114,6 +114,11 @@ def get_script_home():
     If none of the above cases apply and the file for ``__main__`` cannot
     be determined the working directory is returned.
 
+    When the script is being run by a Python profiler, this function
+    may return the directory where the profiler is running instead of
+    the directory of the real script. To workaround this behaviour the
+    full path to the real script can be specified in `pyglet.resource.path`.
+
     :rtype: str
     '''
 
@@ -121,11 +126,15 @@ def get_script_home():
     if frozen in ('windows_exe', 'console_exe'):
         return os.path.dirname(sys.executable)
     elif frozen == 'macosx_app':
+        # py2app
         return os.environ['RESOURCEPATH']
     else:
         main = sys.modules['__main__']
         if hasattr(main, '__file__'):
-            return os.path.dirname(main.__file__)
+            return os.path.dirname(os.path.abspath(main.__file__))
+        else:
+            # cx_Freeze
+            return os.path.dirname(sys.executable)
 
     # Probably interactive
     return ''
@@ -138,8 +147,8 @@ def get_settings_path(name):
     conventions.  Note that the returned path may not exist: applications
     should use ``os.makedirs`` to construct it if desired.
 
-    On Linux, a hidden directory `name` in the user's home directory is
-    returned.
+    On Linux, a directory `name` in the user's configuration directory is
+    returned (usually under ``~/.config``).
 
     On Windows (including under Cygwin) the `name` directory in the user's
     ``Application Settings`` directory is returned.
@@ -153,13 +162,19 @@ def get_settings_path(name):
 
     :rtype: str
     '''
-    if sys.platform in ('cygwin', 'win32'):
+
+    if pyglet.compat_platform in ('cygwin', 'win32'):
         if 'APPDATA' in os.environ:
             return os.path.join(os.environ['APPDATA'], name)
         else:
             return os.path.expanduser('~/%s' % name)
-    elif sys.platform == 'darwin':
+    elif pyglet.compat_platform == 'darwin':
         return os.path.expanduser('~/Library/Application Support/%s' % name)
+    elif pyglet.compat_platform.startswith('linux'):
+        if 'XDG_CONFIG_HOME' in os.environ:
+            return os.path.join(os.environ['XDG_CONFIG_HOME'], name)
+        else:
+            return os.path.expanduser('~/.config/%s' % name)
     else:
         return os.path.expanduser('~/.%s' % name)
 
@@ -244,10 +259,10 @@ class URLLocation(Location):
         self.base = base_url
 
     def open(self, filename, mode='rb'):
-        import urlparse
-        import urllib2
-        url = urlparse.urljoin(self.base, filename)
-        return urllib2.urlopen(url)
+        import urllib.parse
+        import urllib.request, urllib.error, urllib.parse
+        url = urllib.parse.urljoin(self.base, filename)
+        return urllib.request.urlopen(url)
 
 class Loader(object):
     '''Load program resource files from disk.
@@ -282,18 +297,13 @@ class Loader(object):
         '''
         if path is None:
             path = ['.']
-        if type(path) in (str, unicode):
+        if type(path) in (str, str):
             path = [path]
         self.path = list(path)
         if script_home is None:
             script_home = get_script_home()
         self._script_home = script_home
         self._index = None
-
-        # Map name to image
-        self._cached_textures = weakref.WeakValueDictionary()
-        self._cached_images = weakref.WeakValueDictionary()
-        self._cached_animations = weakref.WeakValueDictionary()
 
         # Map bin size to list of atlases
         self._texture_atlas_bins = {}
@@ -308,6 +318,11 @@ class Loader(object):
         You must call this method if `path` is changed or the filesystem
         layout changes.
         '''
+        # map name to image etc.
+        self._cached_textures = weakref.WeakValueDictionary()
+        self._cached_images = weakref.WeakValueDictionary()
+        self._cached_animations = weakref.WeakValueDictionary()
+
         self._index = {}
         for path in self.path:
             if path.startswith('@'):
@@ -340,7 +355,7 @@ class Loader(object):
                     dirpath = dirpath[len(path) + 1:]
                     # Force forward slashes for index
                     if dirpath:
-                        parts = filter(None, dirpath.split(os.sep))
+                        parts = [_f for _f in dirpath.split(os.sep) if _f]
                         dirpath = '/'.join(parts)
                     for filename in filenames:
                         if dirpath:
@@ -441,7 +456,11 @@ class Loader(object):
 
     def _alloc_image(self, name, atlas=True):
         file = self.file(name)
-        img = pyglet.image.load(name, file=file)
+        try:
+            img = pyglet.image.load(name, file=file)
+        finally:
+            file.close()
+
         if not atlas:
             return img.get_texture(True)
 
@@ -559,7 +578,7 @@ class Loader(object):
         :return: List of str
         '''
         self._require_index()
-        return self._cached_images.keys()
+        return list(self._cached_images.keys())
 
     def get_cached_animation_names(self):
         '''Get a list of animation filenames that have been cached.
@@ -570,7 +589,7 @@ class Loader(object):
         :return: List of str
         '''
         self._require_index()
-        return self._cached_animations.keys()
+        return list(self._cached_animations.keys())
 
     def get_texture_bins(self):
         '''Get a list of texture bins in use.
@@ -581,7 +600,7 @@ class Loader(object):
         :return: List of `TextureBin`
         '''
         self._require_index()
-        return self._texture_atlas_bins.values()
+        return list(self._texture_atlas_bins.values())
 
     def media(self, name, streaming=True):
         '''Load a sound or video resource.
@@ -683,7 +702,7 @@ class Loader(object):
         :rtype: list of str
         '''
         self._require_index()
-        return self._cached_textures.keys()
+        return list(self._cached_textures.keys())
 
 #: Default resource search path.
 #:

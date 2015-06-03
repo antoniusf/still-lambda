@@ -41,9 +41,9 @@ __version__ = '$Id: $'
 from ctypes import *
 import unicodedata
 import warnings
-import sys
 
-if sys.platform not in ('cygwin', 'win32'):
+from pyglet import compat_platform
+if compat_platform not in ('cygwin', 'win32'):
     raise ImportError('Not a win32 platform.')
 
 import pyglet
@@ -170,7 +170,7 @@ class Win32Window(BaseWindow):
             white = _gdi32.GetStockObject(WHITE_BRUSH)
             black = _gdi32.GetStockObject(BLACK_BRUSH)
             self._window_class = WNDCLASS()
-            self._window_class.lpszClassName = u'GenericAppClass%d' % id(self)
+            self._window_class.lpszClassName = 'GenericAppClass%d' % id(self)
             self._window_class.lpfnWndProc = WNDPROC(self._wnd_proc)
             self._window_class.style = CS_VREDRAW | CS_HREDRAW
             self._window_class.hInstance = 0
@@ -183,7 +183,7 @@ class Win32Window(BaseWindow):
 
             self._view_window_class = WNDCLASS()
             self._view_window_class.lpszClassName = \
-                u'GenericViewClass%d' % id(self)
+                'GenericViewClass%d' % id(self)
             self._view_window_class.lpfnWndProc = WNDPROC(self._wnd_proc_view)
             self._view_window_class.style = 0
             self._view_window_class.hInstance = 0
@@ -198,7 +198,7 @@ class Win32Window(BaseWindow):
             self._hwnd = _user32.CreateWindowExW(
                 self._ex_ws_style,
                 self._window_class.lpszClassName,
-                u'',
+                '',
                 self._ws_style,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -212,7 +212,7 @@ class Win32Window(BaseWindow):
             self._view_hwnd = _user32.CreateWindowExW(
                 0,
                 self._view_window_class.lpszClassName,
-                u'',
+                '',
                 WS_CHILD | WS_VISIBLE,
                 0, 0, 0, 0,
                 self._hwnd,
@@ -350,13 +350,12 @@ class Win32Window(BaseWindow):
 
     def set_visible(self, visible=True):
         if visible:
-            if self._fullscreen:
-                _user32.SetWindowPos(self._hwnd, HWND_TOPMOST, 0, 0, 0, 0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
-            else:
-                _user32.ShowWindow(self._hwnd, SW_SHOW)
+            insertAfter = HWND_TOPMOST if self._fullscreen else HWND_TOP
+            _user32.SetWindowPos(self._hwnd, insertAfter, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
             self.dispatch_event('on_show')
             self.activate()
+            self.dispatch_event('on_resize', self._width, self._height)
         else:
             _user32.ShowWindow(self._hwnd, SW_HIDE)
             self.dispatch_event('on_hide')
@@ -386,7 +385,7 @@ class Win32Window(BaseWindow):
                 cursor = self._mouse_cursor.cursor
             else:
                 cursor = _user32.LoadCursorW(None, MAKEINTRESOURCE(IDC_ARROW))
-            _user32.SetClassLongPtrW(self._view_hwnd, GCL_HCURSOR, cursor)
+            _user32.SetClassLongW(self._view_hwnd, GCL_HCURSOR, cursor)
             _user32.SetCursor(cursor)
 
         if platform_visible == self._mouse_platform_visible:
@@ -492,7 +491,7 @@ class Win32Window(BaseWindow):
         }
         if name not in names:
             raise RuntimeError('Unknown cursor name "%s"' % name)
-        cursor = _user32.LoadCursorW(None, unicode(names[name]))
+        cursor = _user32.LoadCursorW(None, MAKEINTRESOURCE(names[name]))
         return Win32MouseCursor(cursor)
 
     def set_icon(self, *images):
@@ -711,7 +710,7 @@ class Win32Window(BaseWindow):
 
     @Win32EventHandler(WM_CHAR)
     def _event_char(self, msg, wParam, lParam):
-        text = unichr(wParam)
+        text = chr(wParam)
         if unicodedata.category(text) != 'Cc' or text == '\r':
             self.dispatch_event('on_text', text)
         return 0

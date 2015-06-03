@@ -12,7 +12,7 @@ NSApplication = ObjCClass('NSApplication')
 class PygletTextView_Implementation(object):
     PygletTextView = ObjCSubclass('NSTextView', 'PygletTextView')
 
-    @PygletTextView.method('@'+PyObjectEncoding)
+    @PygletTextView.method(b'@'+PyObjectEncoding)
     def initWithCocoaWindow_(self, window):
         self = ObjCInstance(send_super(self, 'init'))
         if not self:
@@ -46,9 +46,9 @@ class PygletTextView_Implementation(object):
         # Only the return key press gets sent as an on_text event.
         event = NSApplication.sharedApplication().currentEvent()
         chars = event.charactersIgnoringModifiers()
-        ch = unichr(chars.characterAtIndex_(0))
-        if ch == u'\r':
-            self._window.dispatch_event("on_text", u'\r')
+        ch = chr(chars.characterAtIndex_(0))
+        if ch == '\r':
+            self._window.dispatch_event("on_text", '\r')
 
     @PygletTextView.method('v@')
     def moveUp_(self, sender):
