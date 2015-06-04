@@ -1,14 +1,61 @@
 import pyglet
 import math
 
+class Entity:
+
+    def __init__(self, exp, x, y, scale=1):
+
+        self.x = x
+        self.y = y
+        self.scale = scale
+        self.hover = False
+        self.drag = False
+
+        self.exp = exp
+
+    def draw(self, scale_factor, xoffset, yoffset):
+
+        draw_exp(self.exp, scale_factor*self.scale, (self.x-0.5*self.scale+xoffset)*scale_factor+window.width/2, (self.y-0.5*self.scale+yoffset)*scale_factor+window.height/2)
+
+    def on_mouse_motion(self, x_offset, y_offset):
+
+        if -x_offset > self.x-0.5*self.scale and -y_offset > self.y-0.5*self.scale and -x_offset < self.x+0.5*self.scale and -y_offset < self.y+0.5*self.scale:
+            self.hover = True
+        else:
+            self.hover = False
+
+    def on_mouse_press(self):
+        
+        if self.hover:
+            self.drag = True
+
+    def on_mouse_drag(self, dx, dy):
+
+        if self.drag:
+            self.x += dx
+            self.y += dy
+
+    def on_mouse_scroll(self, factor):
+
+        if self.drag:
+            self.scale /= factor
+            self.x = -xoffset+(xoffset+self.x)/factor #modify the coordinates so that the difference between crosshair and coordinates stays constant over transformation (else scaling would occur at the center, and the shrinking entity would seem to move away from the cursor, while actually staying rooted)
+            self.y = -yoffset+(yoffset+self.y)/factor
+
+    def on_mouse_release(self):
+
+        if self.drag:
+            self.drag = False
+
 window = pyglet.window.Window(1024, 768)
 window.set_exclusive_mouse(True)
 
 colors = (
+        (0.7, 0.7, 0.7, 1.0),
         (0.149, 0.078, 0.757, 1.0),
         (0.545, 0.024, 0.729, 1.0),
         (0.929, 0.988, 0.0, 1.0),
-        (1.0, 0.78, 0.0, 1.0)
+        (1.0, 0.78, 0.0, 1.0),
         )
 
 exp = ("l", ("l", ("a", 1, 2)))
@@ -50,6 +97,16 @@ def draw_exp(exp, scale_factor, xoffset, yoffset, l_index=1):
 scale_factor = 400.0
 xoffset = 0.0
 yoffset = 0.0
+mouse_sensitivity = 400.0
+
+entities = []
+entities.append(Entity(exp, 0, 0))
+entities.append(Entity(0, 1, 0, 0.5))
+
+crosshair = pyglet.graphics.vertex_list(4,
+        ('v2i', (window.width//2, window.height//2+10, window.width//2, window.height//2-10, window.width//2+10, window.height//2, window.width//2-10, window.height//2)),
+        ('c4f', (0.8, 0.8, 0.8, 0.8)*4)
+        )
 
 fpsclock = pyglet.clock.ClockDisplay()
 
@@ -58,7 +115,12 @@ def on_draw():
 
     window.clear()
 
-    draw_exp(exp, scale_factor, xoffset*scale_factor/400.0+window.width/2, yoffset*scale_factor/400.0+window.height/2)
+    #draw_exp(exp, scale_factor, xoffset*scale_factor/400.0+window.width/2, yoffset*scale_factor/400.0+window.height/2)
+    for entity in entities:
+        entity.draw(scale_factor, xoffset, yoffset)
+
+    #draw crosshair
+    crosshair.draw(pyglet.gl.GL_LINES)
 
     fpsclock.draw()
 
@@ -66,13 +128,43 @@ def on_draw():
 def on_mouse_motion(x, y, dx, dy):
     
     global xoffset, yoffset
+    xoffset -= dx/mouse_sensitivity
+    yoffset -= dy/mouse_sensitivity
+
+    for entity in entities:
+        entity.on_mouse_motion(xoffset, yoffset)
+
+@window.event
+def on_mouse_press(x, y, button, modifiers):
+
+    for entity in entities:
+        entity.on_mouse_press()
+
+@window.event
+def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
+
+    global xoffset, yoffset
+    dx /= mouse_sensitivity
+    dy /= mouse_sensitivity
     xoffset -= dx
     yoffset -= dy
+
+    for entity in entities:
+        entity.on_mouse_drag(dx, dy)
+
+@window.event
+def on_mouse_release(x, y, button, modifiers):
+
+    for entity in entities:
+        entity.on_mouse_release()
 
 @window.event
 def on_mouse_scroll(x, y, scroll_x, scroll_y):
 
     global scale_factor
     scale_factor *= math.exp(scroll_y/10.0)
+
+    for entity in entities:
+        entity.on_mouse_scroll(math.exp(scroll_y/10.0))
 
 pyglet.app.run()
