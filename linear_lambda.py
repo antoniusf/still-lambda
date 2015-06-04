@@ -39,7 +39,7 @@ class Entity:
 
         if self.drag:
             self.scale /= factor
-            self.x = -xoffset+(xoffset+self.x)/factor #modify the coordinates so that the difference between crosshair and coordinates stays constant over transformation (else scaling would occur at the center, and the shrinking entity would seem to move away from the cursor, while actually staying rooted)
+            self.x = -xoffset+(xoffset+self.x)/factor #modify the coordinates so that the difference between crosshair and coordinates stays constant over transformation (else scaling would occur at the center, and the shrinking entity would seem to move away from the cursor, while actually staying rooted in its original position)
             self.y = -yoffset+(yoffset+self.y)/factor
 
     def on_mouse_release(self):
@@ -137,8 +137,12 @@ def on_mouse_motion(x, y, dx, dy):
 @window.event
 def on_mouse_press(x, y, button, modifiers):
 
-    for entity in entities:
-        entity.on_mouse_press()
+    if button == pyglet.window.mouse.LEFT:
+        for entity in entities:
+            entity.on_mouse_press()
+    
+    elif button == pyglet.window.mouse.RIGHT:
+        entities.append(Entity(exp=0, x=-xoffset, y=-yoffset, scale=0))
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
@@ -149,14 +153,23 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     xoffset -= dx
     yoffset -= dy
 
-    for entity in entities:
-        entity.on_mouse_drag(dx, dy)
+    if pyglet.window.mouse.LEFT & buttons:
+        for entity in entities:
+            entity.on_mouse_drag(dx, dy)
+
+    elif pyglet.window.mouse.RIGHT & buttons:
+        diff = entities[-1].y + yoffset
+        entities[-1].scale += diff
+        entities[-1].scale = abs(entities[-1].scale)
+        entities[-1].y = -yoffset
+
 
 @window.event
 def on_mouse_release(x, y, button, modifiers):
 
-    for entity in entities:
-        entity.on_mouse_release()
+    if button == pyglet.window.mouse.LEFT:
+        for entity in entities:
+            entity.on_mouse_release()
 
 @window.event
 def on_mouse_scroll(x, y, scroll_x, scroll_y):
