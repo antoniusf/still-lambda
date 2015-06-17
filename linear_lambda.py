@@ -7,21 +7,35 @@ class Entity:
 
     VARIABLE = 0
     APPLICATION = 1
-    #ABSTRACTION = 2
+    ABSTRACTION = 2
 
     def __init__(self, kind, x, y, scale=1, var_id=None):
 
         self.x = x
         self.y = y
         self.scale = scale
-        self.hover = False
+
         self.drag = False
+        self.hover = False
+        self.hover_over = 0
+        self.fading = False
 
         self.kind = kind
 
         self.childs = []
 
         self.var_id = var_id
+
+        self.opacity = 1.0
+
+    def _del(self):
+
+        entities.remove(self)
+
+        if self.kind == Entity.VARIABLE:
+            vars_by_id[self.var_id].remove(self)
+            if vars_by_id[self.var_id] == []:
+                available_ids.append(self.var_id)
 
     def draw(self, scale_factor, xoffset, yoffset):
 
@@ -32,8 +46,8 @@ class Entity:
         if self.kind == Entity.VARIABLE:
 
             #draw box
-            draw_rect(local_x, local_y, local_scale, local_scale, darken(colors[self.var_id]))
-            draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, colors[self.var_id])
+            draw_rect(local_x, local_y, local_scale, local_scale, darken(colors[self.var_id], 0.5*self.opacity))
+            draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, darken(colors[self.var_id], self.opacity))
 
             #draw connections to other variables
             other_var = None
@@ -54,8 +68,16 @@ class Entity:
 
         elif self.kind == Entity.APPLICATION:
 
-            draw_rect(x, y, 1*local_scale, 1*local_scale, darken((0.3, 0.3, 0.3, 1.0)))
-            draw_rect(x+local_scale/32.0, y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, (0.3, 0.3, 0.3, 1.0))
+            draw_rect(local_x, local_y, 1*local_scale, 1*local_scale, darken((0.3, 0.3, 0.3, 1.0), 0.5))
+            draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, (0.3, 0.3, 0.3, 1.0))
+
+        elif self.kind == Entity.ABSTRACTION:
+
+            border = local_scale/16.0
+            draw_rect(local_x, local_y, local_scale, border, (0.3, 0.3, 0.3, 1.0))
+            draw_rect(local_x, local_y-border+local_scale, local_scale, border, (0.3, 0.3, 0.3, 1.0))
+            draw_rect(local_x, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
+            draw_rect(local_x-border+local_scale, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
 
         for child in self.childs:
             child.draw()
@@ -65,6 +87,16 @@ class Entity:
     def on_mouse_motion(self, x_offset, y_offset):
 
         if -x_offset > self.x-0.5*self.scale and -y_offset > self.y-0.5*self.scale and -x_offset < self.x+0.5*self.scale and -y_offset < self.y+0.5*self.scale and self.drag == False:
+
+            if -y_offset > self.y:
+                
+                if -x_offset < self.x:
+                    self.hover_over = 2
+                elif -x_offset >= self.x:
+                    self.hover_over = 1
+            elif -y_offset <= self.y:
+                self.hover_over = 0
+
             self.hover = True
         else:
             self.hover = False
@@ -75,10 +107,10 @@ class Entity:
         
         if self.hover:
 
-            if button == pyglet.window.mouse.LEFT:
+            if self.hover_over == 0 or self.hover_over == 2:
                 self.drag = True
 
-            elif button == pyglet.window.mouse.RIGHT:
+            elif self.hover_over == 1:
                 new_entity = Entity(kind=self.kind, x=self.x, y=self.y, scale=self.scale, var_id=self.var_id)
                 entities.append(new_entity)
                 vars_by_id[self.var_id].append(new_entity)
@@ -94,12 +126,34 @@ class Entity:
         if self.drag:
             self.x += dx
             self.y += dy
+            return True
+
+        elif self.fading:
+
+            diff = xoffset - start_drag_x
+            if -xoffset <= -start_drag_x:
+                self.kind = Entity.VARIABLE
+                self.scale = 100/scale_factor
+                self.x = -xoffset
+                self.y = -yoffset
+
+                opacity = abs(diff/self.scale)
+
+                if opacity >= 1.0:
+                    self.opacity = 1.0
+                    self.fading = False
+                    self.drag = True
+                else:
+                    self.opacity = opacity
+
+            else:
+                self.kind = Entity.ABSTRACTION
+                self.scale = diff
+                self.x = -xoffset+self.scale/2
+
 
         else:
-            if -xoffset > self.x-0.5*self.scale and -yoffset > self.y-0.5*self.scale and -xoffset < self.x+0.5*self.scale and -yoffset < self.y+0.5*self.scale:
-                self.hover = True
-            else:
-                self.hover = False
+            return False
 
     def on_mouse_scroll(self, factor):
 
@@ -112,19 +166,36 @@ class Entity:
 
         if self.drag:
             self.drag = False
-            old_id = None
-            for entity in entities:
-                if entity.hover == True:
-                    old_id = entity.var_id
-                    break
 
-            if old_id != self.var_id and old_id != None:
+            if self.hover_over == 0 or self.hover_over == 2:
+                old_id = None
+                for entity in entities:
+                    if entity.hover == True:
+                        old_id = entity.var_id
+                        break
+
+                if self.hover_over == 0:
+                    if old_id != self.var_id and old_id != None:
+                        vars_by_id[self.var_id].remove(self)
+                        entities.remove(self)
+                        while len(vars_by_id[old_id]) > 0:
+                            entity = vars_by_id[old_id].pop()
+                            entity.var_id = self.var_id
+                            vars_by_id[self.var_id].append(entity)
+                        available_ids.append(old_id)
+
+                elif self.hover_over == 2:
+                    pass
+
+        elif self.fading:
+
+            if self.kind == Entity.VARIABLE:
+                self._del()
+            elif self.kind == Entity.ABSTRACTION:
+                self.fading = False
+                available_ids.append(self.var_id)
                 vars_by_id[self.var_id].remove(self)
-                entities.remove(self)
-                while len(vars_by_id[old_id]) > 0:
-                    entity = vars_by_id[old_id].pop()
-                    entity.var_id = self.var_id
-                    vars_by_id[self.var_id].append(entity)
+                self.var_id = None
 
 window = pyglet.window.Window(1024, 768)
 window.set_exclusive_mouse(True)
@@ -149,8 +220,8 @@ def draw_rect(x, y, w, h, color):
             ('c4f', color*4)
             )
 
-def darken(color):
-    return (color[0]*0.5, color[1]*0.5, color[2]*0.5, color[3])
+def darken(color, factor):
+    return (color[0]*factor, color[1]*factor, color[2]*factor, color[3])
 
 def draw_line(start, end, thickness, color):
 
@@ -173,7 +244,7 @@ def draw_exp(exp, scale_factor, xoffset, yoffset, l_index=1):
 
         if exp[0] == "a":
 
-            draw_rect(xoffset, yoffset, 1*scale_factor, 1*scale_factor, darken((0.3, 0.3, 0.3, 1.0)))
+            draw_rect(xoffset, yoffset, 1*scale_factor, 1*scale_factor, darken((0.3, 0.3, 0.3, 1.0), 0.5))
             draw_rect(xoffset+scale_factor/32.0, yoffset+scale_factor/32.0, (1-1/16.0)*scale_factor, (1-1/16.0)*scale_factor, (0.3, 0.3, 0.3, 1.0))
 
             draw_exp(exp[1], scale_factor*0.5, xoffset, yoffset+scale_factor*0.25, l_index)
@@ -181,7 +252,7 @@ def draw_exp(exp, scale_factor, xoffset, yoffset, l_index=1):
 
     elif type(exp) == int:
 
-        draw_rect(xoffset, yoffset, 1*scale_factor, 1*scale_factor, darken(colors[exp%len(colors)]))
+        draw_rect(xoffset, yoffset, 1*scale_factor, 1*scale_factor, darken(colors[exp%len(colors)], 0.5))
         draw_rect(xoffset+scale_factor/32.0, yoffset+scale_factor/32.0, (1-1/16.0)*scale_factor, (1-1/16.0)*scale_factor, colors[exp%len(colors)])
 
 scale_factor = 400.0
@@ -190,11 +261,9 @@ yoffset = 0.0
 mouse_sensitivity = 400.0
 
 entities = []
-#entities.append(Entity(exp, 0, 0))
 entities.append(Entity(kind=Entity.VARIABLE, x=0, y=0, scale=0.5, var_id=0))
 
-available_ids = [0, 1, 2, 3, 4, 0, 0]
-
+available_ids = [0, 1, 2, 3, 4]
 vars_by_id = []
 for i in range(len(available_ids)):
     vars_by_id.append([])
@@ -204,8 +273,6 @@ crosshair = pyglet.graphics.vertex_list(4,
         ('v2i', (window.width//2, window.height//2+10, window.width//2, window.height//2-10, window.width//2+10, window.height//2, window.width//2-10, window.height//2)),
         ('c4f', (0.8, 0.8, 0.8, 0.8)*4)
         )
-
-varcounter = 0
 
 base_gradient = pyglet.image.load("gradient.png")
 
@@ -248,11 +315,11 @@ def on_mouse_motion(x, y, dx, dy):
 @window.event
 def on_mouse_press(x, y, button, modifiers):
 
+    global start_drag_x, start_drag_y
+
     if button == pyglet.window.mouse.LEFT:
-        for entity in entities:
-            entity.on_mouse_press(button)
-    
-    elif button == pyglet.window.mouse.RIGHT:
+
+        start_drag_x, start_drag_y, = xoffset, yoffset
 
         handled = False
         for entity in entities:
@@ -269,6 +336,7 @@ def on_mouse_press(x, y, button, modifiers):
             new_entity = Entity(kind=Entity.VARIABLE, x=-xoffset, y=-yoffset, scale=0, var_id=new_id)
             entities.append(new_entity)
             vars_by_id[new_id].append(new_entity)
+            new_entity.fading = True
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
@@ -280,14 +348,12 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
     yoffset -= dy
 
     if pyglet.window.mouse.LEFT & buttons:
-        for entity in entities:
-            entity.on_mouse_drag(dx, dy)
 
-    elif pyglet.window.mouse.RIGHT & buttons:
-        diff = entities[-1].y + yoffset
-        entities[-1].scale += diff
-        entities[-1].scale = abs(entities[-1].scale)
-        entities[-1].y = -yoffset
+        dragging = False
+        for entity in entities:
+            if entity.on_mouse_drag(dx, dy):
+                dragging = True
+                break
 
     check_hover()
 
