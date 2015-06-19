@@ -87,34 +87,26 @@ class Entity:
     def on_mouse_motion(self, x_offset, y_offset):
 
         if -x_offset > self.x-0.5*self.scale and -y_offset > self.y-0.5*self.scale and -x_offset < self.x+0.5*self.scale and -y_offset < self.y+0.5*self.scale and self.drag == False:
-
-            if -y_offset > self.y:
-                
-                if -x_offset < self.x:
-                    self.hover_over = 2
-                elif -x_offset >= self.x:
-                    self.hover_over = 1
-            elif -y_offset <= self.y:
-                self.hover_over = 0
-
+            self.hover_over = 0
             self.hover = True
+
         else:
             self.hover = False
 
         return self.hover
 
-    def on_mouse_press(self, button):
+    def on_mouse_press(self, modifiers):
         
         if self.hover:
 
-            if self.hover_over == 0 or self.hover_over == 2:
-                self.drag = True
-
-            elif self.hover_over == 1:
+            if modifiers & pyglet.window.key.MOD_SHIFT:
                 new_entity = Entity(kind=self.kind, x=self.x, y=self.y, scale=self.scale, var_id=self.var_id)
                 entities.append(new_entity)
                 vars_by_id[self.var_id].append(new_entity)
                 new_entity.drag = True
+
+            else:
+                self.drag = True
 
             return True
 
@@ -259,6 +251,7 @@ scale_factor = 400.0
 xoffset = 0.0
 yoffset = 0.0
 mouse_sensitivity = 400.0
+lock_position = False
 
 entities = []
 entities.append(Entity(kind=Entity.VARIABLE, x=0, y=0, scale=0.5, var_id=0))
@@ -307,8 +300,10 @@ def on_draw():
 def on_mouse_motion(x, y, dx, dy):
     
     global xoffset, yoffset
-    xoffset -= dx/mouse_sensitivity
-    yoffset -= dy/mouse_sensitivity
+
+    if not lock_position:
+        xoffset -= dx/mouse_sensitivity
+        yoffset -= dy/mouse_sensitivity
 
     check_hover()
 
@@ -316,14 +311,16 @@ def on_mouse_motion(x, y, dx, dy):
 def on_mouse_press(x, y, button, modifiers):
 
     global start_drag_x, start_drag_y
+    global lock_position
 
     if button == pyglet.window.mouse.LEFT:
 
         start_drag_x, start_drag_y, = xoffset, yoffset
+        lock_position = False
 
         handled = False
         for entity in entities:
-            handled = entity.on_mouse_press(button)
+            handled = entity.on_mouse_press(modifiers)
             if handled:
                 break
 
@@ -373,5 +370,19 @@ def on_mouse_scroll(x, y, scroll_x, scroll_y):
 
     for entity in entities:
         entity.on_mouse_scroll(math.exp(scroll_y/10.0))
+
+@window.event
+def on_key_press(key, modifiers):
+
+    global lock_position
+    if key == pyglet.window.key.LSHIFT:
+        lock_position = True
+
+@window.event
+def on_key_release(key, modifiers):
+
+    global lock_position
+    if key == pyglet.window.key.LSHIFT:
+        lock_position = False
 
 pyglet.app.run()
