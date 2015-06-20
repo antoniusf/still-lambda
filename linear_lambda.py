@@ -18,15 +18,18 @@ class Entity:
         self.drag = False
         self.hover = False
         self.hover_over = 0
-        self.fading = False
+        self.being_created = False
 
         self.kind = kind
 
         self.childs = []
+        self.argument_child = None
+        self.parent = None
 
         self.var_id = var_id
 
         self.opacity = 1.0
+        self.apply_tray_opacity = 0.0
 
     def _del(self):
 
@@ -46,8 +49,12 @@ class Entity:
         if self.kind == Entity.VARIABLE:
 
             #draw box
-            draw_rect(local_x, local_y, local_scale, local_scale, darken(colors[self.var_id], 0.5*self.opacity))
-            draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, darken(colors[self.var_id], self.opacity))
+            color = colors[self.var_id]
+            draw_rect(local_x, local_y, local_scale, local_scale, darken(color, 0.5*self.opacity))
+            draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, darken(color, self.opacity))
+
+            #Apply tray
+            draw_rect(local_x+1.0*local_scale, local_y+local_scale/4-local_scale/32.0, (0.5+1/32.0)*local_scale, (0.5+1/16.0)*local_scale, darken(color, 0.5*self.apply_tray_opacity))
 
             #draw connections to other variables
             other_var = None
@@ -71,6 +78,9 @@ class Entity:
             draw_rect(local_x, local_y, 1*local_scale, 1*local_scale, darken((0.3, 0.3, 0.3, 1.0), 0.5))
             draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, (0.3, 0.3, 0.3, 1.0))
 
+            #Apply tray
+            draw_rect(local_x+0.75, local_y, 0.5*local_scale, 0.5*local_scale, darken((0.3, 0.3, 0.3, 1.0), 0.5))
+
         elif self.kind == Entity.ABSTRACTION:
 
             border = local_scale/16.0
@@ -79,9 +89,6 @@ class Entity:
             draw_rect(local_x, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
             draw_rect(local_x-border+local_scale, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
 
-        for child in self.childs:
-            child.draw()
-
         #draw_exp(self.exp, scale_factor*self.scale, (self.x-0.5*self.scale+xoffset)*scale_factor+window.width/2, (self.y-0.5*self.scale+yoffset)*scale_factor+window.height/2)
 
     def on_mouse_motion(self, x_offset, y_offset):
@@ -89,9 +96,20 @@ class Entity:
         if -x_offset > self.x-0.5*self.scale and -y_offset > self.y-0.5*self.scale and -x_offset < self.x+0.5*self.scale and -y_offset < self.y+0.5*self.scale and self.drag == False:
             self.hover_over = 0
             self.hover = True
+            self.apply_tray_opacity = 0.0
+
+        elif -xoffset > self.x+0.5*self.scale and -y_offset > self.y-0.25*self.scale and -x_offset < self.x+1.0*self.scale and -y_offset < self.y+0.25*self.scale:
+
+            self.hover_over = 1
+            self.hover = True
+            self.apply_tray_opacity = 1.0
 
         else:
             self.hover = False
+            self.apply_tray_opacity = 0.0
+
+        if self.childs != []:
+            self.apply_tray_opacity = 1.0
 
         return self.hover
 
@@ -106,12 +124,38 @@ class Entity:
                 new_entity.drag = True
 
             else:
-                self.drag = True
+                self.start_drag()
+
+                if self.parent != None:
+                    self.parent.childs.remove(self)
+                    self.parent.argument_child = None
+                    self.parent = None
 
             return True
 
         else:
             return False
+
+    def start_drag(self):
+
+        self.drag = True
+        for child in self.childs:
+            child.start_drag()
+
+    def move(self, dx, dy):
+
+        self.x += dx
+        self.y += dy
+        for child in self.childs:
+            child.move(dx, dy)
+
+    def scale_around_center(self, factor, x, y):
+        self.scale *= factor
+        self.x = x+(self.x-x)*factor
+        self.y = y+(self.y-y)*factor
+
+        for child in self.childs:
+            child.scale_around_center(factor, x, y)
 
     def on_mouse_drag(self, dx, dy):
 
@@ -123,13 +167,14 @@ class Entity:
 
             elif zooming:
                 factor = math.exp(0.01* vec2.inner ((dx, dy), (1.0, 0.0)) )
+
                 self.scale *= factor
                 self.x = -xoffset+(self.x - (-xoffset))*factor #modify the coordinates so that the position of the crosshair relative to the entity stays constant over transformation (else scaling would occur at the center, and the shrinking entity would seem to move away from the cursor, while actually staying rooted in its original position)
                 self.y = -yoffset+(self.y - (-yoffset))*factor
 
             return True
 
-        elif self.fading:
+        elif self.being_created:
 
             diff = xoffset - start_drag_x
             if -xoffset <= -start_drag_x:
@@ -142,7 +187,7 @@ class Entity:
 
                 if opacity >= 1.0:
                     self.opacity = 1.0
-                    self.fading = False
+                    self.being_created = False
                     self.drag = True
                 else:
                     self.opacity = opacity
@@ -168,32 +213,47 @@ class Entity:
         if self.drag:
             self.drag = False
 
-            if self.hover_over == 0 or self.hover_over == 2:
-                old_id = None
-                for entity in entities:
-                    if entity.hover == True:
-                        old_id = entity.var_id
-                        break
+            recipient_entity = None
+            for entity in entities:
+                if entity != self and entity.hover == True:
+                    recipient_entity = entity
+                    break
 
-                if self.hover_over == 0:
-                    if old_id != self.var_id and old_id != None:
-                        vars_by_id[self.var_id].remove(self)
-                        entities.remove(self)
+            if recipient_entity != None:
+
+                if recipient_entity.kind == Entity.VARIABLE and recipient_entity.hover_over == 0:
+
+                    old_id = recipient_entity.var_id
+                    new_id = self.var_id
+
+                    if old_id != new_id:
+
                         while len(vars_by_id[old_id]) > 0:
                             entity = vars_by_id[old_id].pop()
-                            entity.var_id = self.var_id
-                            vars_by_id[self.var_id].append(entity)
+                            entity.var_id = new_id
+                            vars_by_id[new_id].append(entity)
                         available_ids.append(old_id)
 
-                elif self.hover_over == 2:
-                    pass
+                    vars_by_id[self.var_id].remove(self)
+                    entities.remove(self)
 
-        elif self.fading:
+                elif recipient_entity.hover_over == 1:
+                    if recipient_entity.argument_child == None:
+                        recipient_entity.childs.append(self)
+                        recipient_entity.argument_child = self
+                        self.parent = recipient_entity
+
+                        new_x = self.parent.x + self.parent.scale*0.75
+                        new_y = self.parent.y
+                        self.move(new_x-self.x, new_y-self.y)
+                        self.scale_around_center((self.parent.scale/2.0)/self.scale, self.x, self.y)
+
+        elif self.being_created:
 
             if self.kind == Entity.VARIABLE:
                 self._del()
             elif self.kind == Entity.ABSTRACTION:
-                self.fading = False
+                self.being_created = False
                 available_ids.append(self.var_id)
                 vars_by_id[self.var_id].remove(self)
                 self.var_id = None
@@ -350,7 +410,7 @@ def on_mouse_press(x, y, button, modifiers):
             new_entity = Entity(kind=Entity.VARIABLE, x=-xoffset, y=-yoffset, scale=0, var_id=new_id)
             entities.append(new_entity)
             vars_by_id[new_id].append(new_entity)
-            new_entity.fading = True
+            new_entity.being_created = True
 
 @window.event
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
@@ -365,11 +425,8 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
 
     if pyglet.window.mouse.LEFT & buttons:
 
-        dragging = False
         for entity in entities:
-            if entity.on_mouse_drag(dx, dy):
-                dragging = True
-                break
+            entity.on_mouse_drag(dx, dy)
 
     check_hover()
 
