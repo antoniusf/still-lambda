@@ -116,8 +116,17 @@ class Entity:
     def on_mouse_drag(self, dx, dy):
 
         if self.drag:
-            self.x += dx
-            self.y += dy
+
+            if not zooming:
+                self.x += dx
+                self.y += dy
+
+            elif zooming:
+                factor = math.exp(0.01* vec2.inner ((dx, dy), (1.0, 0.0)) )
+                self.scale *= factor
+                self.x = -xoffset+(self.x - (-xoffset))*factor #modify the coordinates so that the position of the crosshair relative to the entity stays constant over transformation (else scaling would occur at the center, and the shrinking entity would seem to move away from the cursor, while actually staying rooted in its original position)
+                self.y = -yoffset+(self.y - (-yoffset))*factor
+
             return True
 
         elif self.fading:
@@ -248,10 +257,14 @@ def draw_exp(exp, scale_factor, xoffset, yoffset, l_index=1):
         draw_rect(xoffset+scale_factor/32.0, yoffset+scale_factor/32.0, (1-1/16.0)*scale_factor, (1-1/16.0)*scale_factor, colors[exp%len(colors)])
 
 scale_factor = 400.0
+start_scale_factor = 400.0
 xoffset = 0.0
 yoffset = 0.0
+start_drag_x = 0.0
+start_drag_y = 0.0
 mouse_sensitivity = 400.0
 lock_position = False
+zooming = False
 
 entities = []
 entities.append(Entity(kind=Entity.VARIABLE, x=0, y=0, scale=0.5, var_id=0))
@@ -300,10 +313,14 @@ def on_draw():
 def on_mouse_motion(x, y, dx, dy):
     
     global xoffset, yoffset
+    global scale_factor
 
-    if not lock_position:
+    if not lock_position and not zooming:
         xoffset -= dx/mouse_sensitivity
         yoffset -= dy/mouse_sensitivity
+
+    elif zooming:
+        scale_factor *= math.exp(0.01*vec2.inner( (dx, dy), (1.0, 0.0)))
 
     check_hover()
 
@@ -315,7 +332,7 @@ def on_mouse_press(x, y, button, modifiers):
 
     if button == pyglet.window.mouse.LEFT:
 
-        start_drag_x, start_drag_y, = xoffset, yoffset
+        start_drag_x, start_drag_y = xoffset, yoffset
         lock_position = False
 
         handled = False
@@ -339,10 +356,12 @@ def on_mouse_press(x, y, button, modifiers):
 def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
 
     global xoffset, yoffset
-    dx /= mouse_sensitivity
-    dy /= mouse_sensitivity
-    xoffset -= dx
-    yoffset -= dy
+
+    if not zooming:
+        dx /= mouse_sensitivity
+        dy /= mouse_sensitivity
+        xoffset -= dx
+        yoffset -= dy
 
     if pyglet.window.mouse.LEFT & buttons:
 
@@ -375,14 +394,28 @@ def on_mouse_scroll(x, y, scroll_x, scroll_y):
 def on_key_press(key, modifiers):
 
     global lock_position
-    if key == pyglet.window.key.LSHIFT:
+    global start_drag_x, start_drag_y
+    global zooming
+    global start_scale_factor
+
+    if key == pyglet.window.key.LSHIFT or key == pyglet.window.key.RSHIFT:
         lock_position = True
+
+    elif key == pyglet.window.key.LCTRL or key == pyglet.window.key.RCTRL:
+        start_drag_x, start_drag_y = xoffset, yoffset
+        start_scale_factor = scale_factor
+        zooming = True
 
 @window.event
 def on_key_release(key, modifiers):
 
     global lock_position
-    if key == pyglet.window.key.LSHIFT:
+    global zooming
+
+    if key == pyglet.window.key.LSHIFT or key == pyglet.window.key.RSHIFT:
         lock_position = False
+
+    elif key == pyglet.window.key.LCTRL or key == pyglet.window.key.RCTRL:
+        zooming = False
 
 pyglet.app.run()
