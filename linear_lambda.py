@@ -22,12 +22,16 @@ class Entity:
         self.kind = kind
 
         self.childs = []
+        self.argument_child = None
         self.parent = None
 
-        self.var_id = var_id
+        self.var_id = self.temp_var_id = var_id
+        self.colliding = False
+        self.delete_on_release = 0
 
         self.opacity = 1.0
         self.apply_tray_opacity = 0.0
+
 
     def _del(self):
 
@@ -50,13 +54,14 @@ class Entity:
 
         if self.kind == Entity.VARIABLE:
 
+            if self.childs != []:
+                self.apply_tray_opacity = 1.0
             #draw box
-            color = colors[self.var_id]
+
+            color = colors[self.temp_var_id]
             draw_rect(local_x, local_y, local_scale, local_scale, darken(color, 0.5*self.opacity))
             draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, darken(color, self.opacity))
 
-            #Apply tray
-            draw_rect(local_x+1.0*local_scale, local_y+local_scale/4-local_scale/32.0, (0.5+1/32.0)*local_scale, (0.5+1/16.0)*local_scale, darken(color, 0.5*self.apply_tray_opacity))
 
             #draw connections to other variables
             other_var = None
@@ -77,11 +82,9 @@ class Entity:
 
         elif self.kind == Entity.APPLICATION:
 
+            color = (0.3, 0.3, 0.3, 1.0)
             draw_rect(local_x, local_y, 1*local_scale, 1*local_scale, darken((0.3, 0.3, 0.3, 1.0), 0.5))
             draw_rect(local_x+local_scale/32.0, local_y+local_scale/32.0, (1-1/16.0)*local_scale, (1-1/16.0)*local_scale, (0.3, 0.3, 0.3, 1.0))
-
-            #Apply tray
-            draw_rect(local_x+0.75, local_y, 0.5*local_scale, 0.5*local_scale, darken((0.3, 0.3, 0.3, 1.0), 0.5))
 
         elif self.kind == Entity.ABSTRACTION:
 
@@ -91,11 +94,17 @@ class Entity:
             draw_rect(local_x, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
             draw_rect(local_x-border+local_scale, local_y, border, local_scale, (0.3, 0.3, 0.3, 1.0))
 
+        #Apply tray
+        if self.apply_tray_opacity > 0.0:
+            draw_rect(local_x+1.0*local_scale, local_y+local_scale/4-local_scale/32.0, (0.5+1/32.0)*local_scale, (0.5+1/16.0)*local_scale, darken(color, 0.5*self.apply_tray_opacity))
+
         #draw_exp(self.exp, scale_factor*self.scale, (self.x-0.5*self.scale+xoffset)*scale_factor+window.width/2, (self.y-0.5*self.scale+yoffset)*scale_factor+window.height/2)
         for child in self.childs:
             child.draw(scale_factor, xoffset, yoffset)
 
     def on_mouse_press(self, modifiers):
+
+        global drag_entity
         
         if self == hover_entity:
 
@@ -107,6 +116,7 @@ class Entity:
 
             else:
                 self.drag = True
+                drag_entity = self
 
                 if self.parent != None:
                     self.parent.childs.remove(self)
@@ -134,6 +144,8 @@ class Entity:
 
     def on_mouse_drag(self, dx, dy):
 
+        global drag_entity
+
         if self.drag:
 
             if not zooming:
@@ -158,6 +170,7 @@ class Entity:
                     self.opacity = 1.0
                     self.being_created = False
                     self.drag = True
+                    drag_entity = self
                 else:
                     self.opacity = opacity
 
@@ -166,30 +179,79 @@ class Entity:
                 self.scale = diff
                 self.x = -xoffset+self.scale/2
 
+        else:
+
+            # collision detection
+            if drag_entity:
+                xdiff = abs(self.x-drag_entity.x)
+                ydiff = abs(self.y-drag_entity.y)
+                min_diff = (self.scale+drag_entity.scale)/2
+
+                if xdiff < min_diff and ydiff < min_diff:
+
+                    if self.kind == Entity.VARIABLE or drag_entity.kind == Entity.VARIABLE: #is assignment possible
+                        if self.colliding == False:
+                            self.temp_var_id = drag_entity.var_id
+                            self.colliding = True
+                            drag_entity.delete_on_release += 1
+
+                            for entity in vars_by_id[self.var_id]:
+                                entity.temp_var_id = drag_entity.var_id
+
+                    else:
+                        dx = min_diff-xdiff
+                        dy = min_diff-ydiff
+                        if dx < dy:
+                            if self.x > drag_entity.x:
+                                self.move(dx, 0)
+                            else:
+                                self.move(-dx, 0)
+                        else:
+                            if self.y > drag_entity.y:
+                                self.move(0, dy)
+                            else:
+                                self.move(0, -dy)
+
+                else:
+
+                    if self.colliding == True:
+                        self.colliding = False
+                        self.temp_var_id = self.var_id
+                        drag_entity.delete_on_release -= 1
+
+                        for entity in vars_by_id[self.var_id]:
+                            entity.temp_var_id = self.var_id
+
     def on_mouse_release(self):
+
+        global drag_entity
 
         if self.drag:
             self.drag = False
+            drag_entity = None
+
+            if self.delete_on_release > 0:
+                self._del()
 
             if hover_entity != None:
 
-                if hover_entity.hover_over == 0 and hover_entity.kind == Entity.VARIABLE and self.kind == Entity.VARIABLE: 
+                #if hover_entity.hover_over == 0 and hover_entity.kind == Entity.VARIABLE and self.kind == Entity.VARIABLE: 
 
-                    old_id = hover_entity.var_id
-                    new_id = self.var_id
+                #    old_id = hover_entity.var_id
+                #    new_id = self.var_id
 
-                    if old_id != new_id:
+                #    if old_id != new_id:
 
-                        while len(vars_by_id[old_id]) > 0:
-                            entity = vars_by_id[old_id].pop()
-                            entity.var_id = new_id
-                            vars_by_id[new_id].append(entity)
-                        available_ids.append(old_id)
+                #        while len(vars_by_id[old_id]) > 0:
+                #            entity = vars_by_id[old_id].pop()
+                #            entity.var_id = new_id
+                #            vars_by_id[new_id].append(entity)
+                #        available_ids.append(old_id)
 
-                    vars_by_id[self.var_id].remove(self)
-                    entities.remove(self)
+                #    vars_by_id[self.var_id].remove(self)
+                #    entities.remove(self)
 
-                elif hover_entity.hover_over == 1:
+                if hover_entity.hover_over == 1:
                     if hover_entity.childs == []:
                         hover_entity.childs.append(self)
                         self.parent = hover_entity
@@ -198,6 +260,11 @@ class Entity:
                         new_y = self.parent.y
                         self.move(new_x-self.x, new_y-self.y)
                         self.scale_around_center((self.parent.scale/2.0)/self.scale, self.x, self.y)
+
+                        #application = Entity(kind=Entity.APPLICATION, x=self.parent.x+0.25*self.parent.scale, y=self.parent.y, scale=self.parent.scale*1.75)
+                        #entities.append(application)
+                        #application.childs.append(self.parent)
+
 
         elif self.being_created:
 
@@ -209,6 +276,16 @@ class Entity:
                 available_ids.append(self.var_id)
                 vars_by_id[self.var_id].remove(self)
                 self.var_id = None
+
+        else:
+            self.colliding = False
+            if self.temp_var_id != self.var_id:
+                if self.var_id != None:
+                    vars_by_id[self.var_id].remove(self)
+                if vars_by_id[self.var_id] == []:
+                    available_ids.append(self.var_id)
+                self.var_id = self.temp_var_id
+                vars_by_id[self.var_id].append(self)
 
     def is_ancestor(self, of):
 
@@ -292,6 +369,7 @@ zooming = False
 entities = []
 entities.append(Entity(kind=Entity.VARIABLE, x=0, y=0, scale=0.5, var_id=0))
 hover_entity = None
+drag_entity = None
 
 available_ids = [0, 1, 2, 3, 4]
 vars_by_id = []
@@ -406,7 +484,8 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
 @window.event
 def on_mouse_release(x, y, button, modifiers):
 
-    for entity in entities:
+    stable_entities = entities[:]
+    for entity in stable_entities:
         entity.on_mouse_release()
 
     check_hover()
