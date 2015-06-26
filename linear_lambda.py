@@ -199,18 +199,8 @@ class Entity:
                                 entity.temp_var_id = drag_entity.var_id
 
                     else:
-                        dx = min_diff-xdiff
-                        dy = min_diff-ydiff
-                        if dx < dy:
-                            if self.x > drag_entity.x:
-                                self.move(dx, 0)
-                            else:
-                                self.move(-dx, 0)
-                        else:
-                            if self.y > drag_entity.y:
-                                self.move(0, dy)
-                            else:
-                                self.move(0, -dy)
+                        # block movement
+                        pass
 
                 else:
 
@@ -279,7 +269,7 @@ class Entity:
 
         else:
             self.colliding = False
-            if self.temp_var_id != self.var_id:
+            if self.var_id != None and self.temp_var_id != self.var_id:
                 if self.var_id != None:
                     vars_by_id[self.var_id].remove(self)
                 if vars_by_id[self.var_id] == []:
