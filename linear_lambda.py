@@ -174,42 +174,6 @@ class Entity:
         self.x = x+(self.x-x)*factor
         self.y = y+(self.y-y)*factor
 
-    def on_mouse_release(self):
-
-        global drag_entity
-
-        if self == drag_entity:
-            drag_entity = None
-
-            if self.delete_on_release > 0:
-                self._del()
-
-            if hover_entity != None:
-
-                pass
-
-
-        elif self.being_created:
-
-            if self.kind == Entity.VARIABLE:
-                self._del()
-
-            elif self.kind == Entity.ABSTRACTION:
-                self.being_created = False
-                available_ids.append(self.var_id)
-                vars_by_id[self.var_id].remove(self)
-                self.var_id = None
-
-        else:
-            self.colliding = False
-            if self.var_id != None and self.temp_var_id != self.var_id:
-                if self.var_id != None:
-                    vars_by_id[self.var_id].remove(self)
-                if vars_by_id[self.var_id] == []:
-                    available_ids.append(self.var_id)
-                self.var_id = self.temp_var_id
-                vars_by_id[self.var_id].append(self)
-
     def is_ancestor(self, of):
 
         if of == None:
@@ -299,7 +263,13 @@ def check_hover():
 
 def on_hover_stop(entity):
 
-    entity.id.temp_value = None
+    def on_hover_stop(id):
+        if id.value:
+            on_hover_stop(id.value)
+        else:
+            id.temp_value = None
+
+    on_hover_stop(entity.id)
 
 
 @window.event
@@ -353,7 +323,9 @@ def on_mouse_press(x, y, button, modifiers):
 
             else:
                 free_id = hover_entity.hover_over
-                new_entity = Entity(x=-xoffset, y=-yoffset, scale=50, var_id=free_id)
+                new_entity = Entity(x=-xoffset, y=-yoffset, scale=hover_entity.scale, var_id=free_id)
+                drag_entity = new_entity
+                entities.append(new_entity)
                 if free_id == free_id.parent.value:
 
                     if free_id.parent.kind == ID.APPLICATION:
@@ -365,6 +337,8 @@ def on_mouse_press(x, y, button, modifiers):
                     free_id.parent.value = None
                     free_id.parent = None
 
+                    for id in IDs:
+
                 elif free_id == free_id.parent.argument: # <=> free_id.parent.kind == ID.APPLICATION #?ds
                     #effectively replace free_id.parent with free_id.parent.value in all occurences
                     free_id.parent.argument = None
@@ -374,10 +348,8 @@ def on_mouse_press(x, y, button, modifiers):
 
 
     if hover_entity == None:
-        try:
-            color_id = available_color_ids.pop()
-        except IndexError:
-            raise(BaseException, ("Too many vars. Also, I do not like python exception handling."))
+        assert len(available_color_ids) > 0
+        color_id = available_color_ids.pop()
 
         new_id = ID(kind=ID.VARIABLE, color_id=color_id)
         IDs.append(new_id)
@@ -444,23 +416,62 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
 
     check_hover()
 
-    if hover_entity:
+    if hover_entity and drag_entity:
 
-        assert hover_entity.id.value == None #TODO: general case
+        def drag_over_id(id, rel_x, scale):
+            if rel_x < 0:
+                #copy binder
+                pass
+            else:
+                if id.value:
+                    drag_over_id(id.value, rel_x-scale/4, scale/2)
+                else:
+                    id.temp_value = drag_entity.id #reset is in check_hover
+
+        #assert hover_entity.id.value == None #TODO: general case
         assert hover_entity.colliding == True # mouse cursor should not be able to be outside of drag_entity
-        if -xoffset < hover_entity.x:
-            #copy binder
-            pass
-        else:
-            hover_entity.id.temp_value = drag_entity.id #reset is in check_hover
+        drag_over_id(hover_entity.id, -xoffset-hover_entity.x, scale=hover_entity.scale)
 
 
 @window.event
 def on_mouse_release(x, y, button, modifiers):
 
+    global drag_entity
+
     stable_entities = entities[:]
     for entity in stable_entities:
-        entity.on_mouse_release()
+
+        if entity == drag_entity:
+
+            if entity.delete_on_release > 0:
+                entity._del()
+
+            if hover_entity != None:
+
+                pass
+
+
+        elif entity.being_created:
+
+            if entity.kind == Entity.VARIABLE:
+                entity._del()
+
+            elif entity.kind == Entity.ABSTRACTION:
+                entity.being_created = False
+                available_ids.append(entity.var_id)
+                vars_by_id[entity.var_id].remove(entity)
+                entity.var_id = None
+
+        else:
+            entity.colliding = False
+
+    for id in IDs:
+        if id.temp_value:
+            id.value = id.temp_value
+            id.temp_value = None
+            id.value.parent = id
+
+    drag_entity = None
 
     check_hover()
 
