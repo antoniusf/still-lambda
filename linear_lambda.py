@@ -337,8 +337,6 @@ def on_mouse_press(x, y, button, modifiers):
                     free_id.parent.value = None
                     free_id.parent = None
 
-                    for id in IDs:
-
                 elif free_id == free_id.parent.argument: # <=> free_id.parent.kind == ID.APPLICATION #?ds
                     #effectively replace free_id.parent with free_id.parent.value in all occurences
                     free_id.parent.argument = None
@@ -372,14 +370,23 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
         xoffset -= dx
         yoffset -= dy
 
-    if drag_entity != None:
+    check_hover()
 
+    if drag_entity:
+
+        # transformation
+        if not zooming:
+            drag_entity.move(dx, dy)
+
+        elif zooming:
+            factor = math.exp(0.01* vec2.inner ((dx, dy), (1.0, 0.0)) )
+            drag_entity.scale_around_center(factor, -xoffset, -yoffset)
+
+        #adjust opacity
         if drag_entity.being_created:
-            diff = vec2.abs(vec2.sub( (xoffset, yoffset), (start_drag_x, start_drag_y)))
-            drag_entity.scale = 100/scale_factor
-            drag_entity.x = -xoffset
-            drag_entity.y = -yoffset
 
+            diff = vec2.abs(vec2.sub( (xoffset, yoffset), (start_drag_x, start_drag_y)))
+            drag_entity.scale = 100/scale_factor #TODO: move that into creation
             opacity = abs(diff/drag_entity.scale)
 
             if opacity >= 1.0:
@@ -388,17 +395,9 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
             else:
                 drag_entity.opacity = opacity
 
-        else:
-            if not zooming:
-                drag_entity.move(dx, dy)
-
-            elif zooming:
-                factor = math.exp(0.01* vec2.inner ((dx, dy), (1.0, 0.0)) )
-                drag_entity.scale_around_center(factor, -xoffset, -yoffset)
-
+        # collision detection
         for entity in entities:
             if entity != drag_entity:
-                # collision detection
                 xdiff = abs(entity.x-drag_entity.x)
                 ydiff = abs(entity.y-drag_entity.y)
                 min_diff = (entity.scale+drag_entity.scale)/2
@@ -414,23 +413,21 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
                         entity.colliding = False
                         drag_entity.delete_on_release -= 1
 
-    check_hover()
+        if hover_entity:
 
-    if hover_entity and drag_entity:
-
-        def drag_over_id(id, rel_x, scale):
-            if rel_x < 0:
-                #copy binder
-                pass
-            else:
-                if id.value:
-                    drag_over_id(id.value, rel_x-scale/4, scale/2)
+            def drag_over_id(id, rel_x, scale):
+                if rel_x < 0:
+                    #reset temp_value, just in case
+                    id.temp_value = None
+                    #copy binder
                 else:
-                    id.temp_value = drag_entity.id #reset is in check_hover
+                    if id.value:
+                        drag_over_id(id.value, rel_x-scale/4, scale/2)
+                    else:
+                        id.temp_value = drag_entity.id #reset is also in check_hover
 
-        #assert hover_entity.id.value == None #TODO: general case
-        assert hover_entity.colliding == True # mouse cursor should not be able to be outside of drag_entity
-        drag_over_id(hover_entity.id, -xoffset-hover_entity.x, scale=hover_entity.scale)
+            assert hover_entity.colliding == True # mouse cursor should not be able to be outside of drag_entity
+            drag_over_id(hover_entity.id, -xoffset-hover_entity.x, scale=hover_entity.scale)
 
 
 @window.event
