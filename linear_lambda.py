@@ -5,15 +5,16 @@ import gfx
 
 class ID:
 
-    VARIABLE = 0
-    APPLICATION = 1
-    ABSTRACTION = 2
+    # Notes: impossible data configurations
+    # self.value == None and self.argument != None // can't give something as argument to nothing
+    # self.share_binder == True and self.binds_id // can't share binder because it has already bound its own ID
+    # exists entity in entities with entity.var_id == self and self.parent != None
 
-    def __init__(self, kind, color_id=None):
+    def __init__(self, color_id=None):
 
-        self.kind = kind
         self.parent = None
         self.value = None
+        self.share_binder = False
         self.argument = None
         self.binds_id = None
         self.color_id = color_id
@@ -40,17 +41,13 @@ class ID:
         else:
             value = self.value
 
-        value_x, value_y, value_scale = self.get_offset_and_scale(scale, for_value=True)
-        if self.kind == ID.VARIABLE:
-            if value != None:
-                value.draw(x+value_x, y+value_y, value_scale)
+        if value:
 
-        elif self.kind == ID.APPLICATION:
+            value_x, value_y, value_scale = self.get_offset_and_scale(scale, for_value=True)
             value.draw(x+value_x, y+value_y, value_scale)
-            self.argument.draw(x+scale/4, y+scale/4, scale/3)
 
-        elif self.kind == ID.ABSTRACTION:
-            value.draw(x+value_x, y+value_x, value_scale)
+            if self.argument:
+                self.argument.draw(x+scale/4, y+scale/4, scale/3)
 
     def get_offset_and_scale(self, scale, for_value=False, for_argument=False):
         xoffset = scale/3
@@ -58,14 +55,12 @@ class ID:
         scale *= 2/3
 
         if for_value:
-            if self.kind == ID.VARIABLE:
-                if self.color_id > 0:
-                    return xoffset+scale/16, yoffset+scale/16, scale*7/8
-                else:
-                    return xoffset, yoffset, scale
-            elif self.kind == ID.APPLICATION:
+            if self.argument: #have to make room for it, so the value needs to be a little bit smaller
                 return xoffset+scale/2, yoffset+scale/4, scale/2
-            elif self.kind == ID.ABSTRACTION:
+
+            if self.color_id > 0:
+                return xoffset+scale/16, yoffset+scale/16, scale*7/8
+            else:
                 return xoffset, yoffset, scale
 
         elif for_argument:
@@ -97,26 +92,28 @@ class ID:
             else:
                 return sub_hover
 
+    #def remove_value(self):
+
+    #    if self.argument:
+    #        self.value = self.argument
+    #    else:
+    #        self.value = None
+
     def assign(self, other):
 
-        if self.kind == ID.VARIABLE:
-            self.value = other
-            other.parent = self
-
-        elif other.kind == ID.VARIABLE:
-            other.value = self
-            self.parent = other
+        if self.value:
+            pass #no assignment can take place
 
         else:
-            print("Cannot assign term to non-variable term!")
+            self.value = other
 
-    def unassign(self):
-        if self.kind == ID.VARIABLE:
-            self.value.parent = None
-            self.value = None
-        elif self.parent.kind == ID.VARIABLE and self.parent.value == self:
-            self.parent.value = None
-            self.parent = None
+    #def unassign(self):
+    #    if self.kind == ID.VARIABLE:
+    #        self.value.parent = None
+    #        self.value = None
+    #    elif self.parent.kind == ID.VARIABLE and self.parent.value == self:
+    #        self.parent.value = None
+    #        self.parent = None
 
 class Entity:
 
@@ -313,7 +310,7 @@ def on_mouse_press(x, y, button, modifiers):
     if hover_entity != None:
 
         if modifiers & pyglet.window.key.MOD_SHIFT:#?
-            new_entity = Entity(kind=hover_entity.kind, x=hover_entity.x, y=hover_entity.y, scale=hover_entity.scale, var_id=hover_entity.var_id)
+            new_entity = Entity(x=hover_entity.x, y=hover_entity.y, scale=hover_entity.scale, var_id=hover_entity.var_id)
             entities.append(new_entity)
             drag_entity = new_entity
 
@@ -328,19 +325,20 @@ def on_mouse_press(x, y, button, modifiers):
                 entities.append(new_entity)
                 if free_id == free_id.parent.value:
 
-                    if free_id.parent.kind == ID.APPLICATION:
+                    if free_id.parent.argument:
                         free_id.parent.value = free_id.parent.argument
-                        free_id.parent.kind = ID.VARIABLE
-                        free_id.parent.color_id = 0
-                    elif free_id.parent.kind == ID.ABSTRACTION:
+                        free_id.parent.color_id = 0#?
+                    else:
+                        free_id.parent.value = None
+
+                    if free_id.parent.binds_id != 0:
                         free_id.parent.binds_id = 0
-                    free_id.parent.value = None
+
                     free_id.parent = None
 
-                elif free_id == free_id.parent.argument: # <=> free_id.parent.kind == ID.APPLICATION #?ds
+                elif free_id == free_id.parent.argument: # => free_id.parent.kind == ID.APPLICATION #?ds
                     #effectively replace free_id.parent with free_id.parent.value in all occurences
                     free_id.parent.argument = None
-                    free_id.parent.kind = ID.VARIABLE
                     free_id.parent.color_id = 0 # make it an 'invisible' variable that just passes the value data through
                     free_id.parent = None
 
@@ -349,7 +347,7 @@ def on_mouse_press(x, y, button, modifiers):
         assert len(available_color_ids) > 0
         color_id = available_color_ids.pop()
 
-        new_id = ID(kind=ID.VARIABLE, color_id=color_id)
+        new_id = ID(color_id=color_id)
         IDs.append(new_id)
         new_entity = Entity(x=-xoffset, y=-yoffset, scale=0, var_id=new_id)
         entities.append(new_entity)
