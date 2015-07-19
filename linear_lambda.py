@@ -20,6 +20,7 @@ class ID:
         self.color_id = color_id
 
         self.temp_value = None
+        self.temp_share_binder = False
 
     def draw(self, x, y, scale, opacity=1.0):
 
@@ -58,10 +59,15 @@ class ID:
             if self.argument: #have to make room for it, so the value needs to be a little bit smaller
                 return xoffset+scale/2, yoffset+scale/4, scale/2
 
-            if self.color_id > 0:
-                return xoffset+scale/16, yoffset+scale/16, scale*7/8
             else:
-                return xoffset, yoffset, scale
+                if self.color_id > 0:
+                    if self.share_binder or self.temp_share_binder:
+                        scale *= 3/2
+                        return scale/16, scale/16, scale*14/16
+                    else:
+                        return xoffset+scale/16, yoffset+scale/16, scale*7/8
+                else:
+                    return 0, 0, scale*3/2
 
         elif for_argument:
             return xoffset+scale/4, yoffset+scale/4, scale/3
@@ -265,6 +271,7 @@ def on_hover_stop(entity):
             on_hover_stop(id.value)
         else:
             id.temp_value = None
+            id.temp_share_binder = False
 
     on_hover_stop(entity.id)
 
@@ -323,6 +330,7 @@ def on_mouse_press(x, y, button, modifiers):
                 new_entity = Entity(x=-xoffset, y=-yoffset, scale=hover_entity.scale, var_id=free_id)
                 drag_entity = new_entity
                 entities.append(new_entity)
+
                 if free_id == free_id.parent.value:
 
                     if free_id.parent.argument:
@@ -331,17 +339,13 @@ def on_mouse_press(x, y, button, modifiers):
                     else:
                         free_id.parent.value = None
 
-                    if free_id.parent.binds_id != 0:
-                        free_id.parent.binds_id = 0
-
-                    free_id.parent = None
-
                 elif free_id == free_id.parent.argument: # => free_id.parent.kind == ID.APPLICATION #?ds
                     #effectively replace free_id.parent with free_id.parent.value in all occurences
                     free_id.parent.argument = None
                     free_id.parent.color_id = 0 # make it an 'invisible' variable that just passes the value data through
-                    free_id.parent = None
 
+                free_id.parent.share_binder = False
+                free_id.parent = None
 
     if hover_entity == None:
         assert len(available_color_ids) > 0
@@ -417,12 +421,16 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
                 if rel_x < 0:
                     #reset temp_value, just in case
                     id.temp_value = None
-                    #copy binder
+                    #apply
                 else:
                     if id.value:
                         drag_over_id(id.value, rel_x-scale/4, scale/2)
                     else:
                         id.temp_value = drag_entity.id #reset is also in check_hover
+                        if rel_x < scale/4 and id.binds_id == None:
+                            id.temp_share_binder = True
+                        else:
+                            id.temp_share_binder = False
 
             assert hover_entity.colliding == True # mouse cursor should not be able to be outside of drag_entity
             drag_over_id(hover_entity.id, -xoffset-hover_entity.x, scale=hover_entity.scale)
@@ -465,6 +473,10 @@ def on_mouse_release(x, y, button, modifiers):
             id.value = id.temp_value
             id.temp_value = None
             id.value.parent = id
+
+        if id.temp_share_binder == True:
+            id.share_binder = True
+            id.temp_share_binder = False
 
     drag_entity = None
 
