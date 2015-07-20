@@ -21,6 +21,7 @@ class ID:
 
         self.temp_value = None
         self.temp_share_binder = False
+        self.temp_apply = False
 
     def draw(self, x, y, scale, opacity=1.0):
 
@@ -48,7 +49,8 @@ class ID:
             value.draw(x+value_x, y+value_y, value_scale)
 
             if self.argument:
-                self.argument.draw(x+scale/4, y+scale/4, scale/3)
+                argument_x, argument_y, argument_scale = self.get_offset_and_scale(scale, for_argument=True)
+                self.argument.draw(x+argument_x, y+argument_y, argument_scale)
 
     def get_offset_and_scale(self, scale, for_value=False, for_argument=False):
         xoffset = scale/3
@@ -84,7 +86,7 @@ class ID:
             
             sub_hover = None
 
-            if self.value != None:
+            if self.value:
                 value_x, value_y, value_scale = self.get_offset_and_scale(scale, for_value=True)
                 sub_hover = self.value.get_hover_id(rel_mouse_x-value_x, rel_mouse_y-value_y, value_scale)
 
@@ -335,6 +337,7 @@ def on_mouse_press(x, y, button, modifiers):
 
                     if free_id.parent.argument:
                         free_id.parent.value = free_id.parent.argument
+                        free_id.parent.argument = None
                         free_id.parent.color_id = 0#?
                     else:
                         free_id.parent.value = None
@@ -421,16 +424,18 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
                 if rel_x < 0:
                     #reset temp_value, just in case
                     id.temp_value = None
-                    #apply
+                    #apply?
+                    id.temp_apply = True
                 else:
-                    if id.value:
-                        drag_over_id(id.value, rel_x-scale/4, scale/2)
-                    else:
-                        id.temp_value = drag_entity.id #reset is also in check_hover
-                        if rel_x < scale/4 and id.binds_id == None:
-                            id.temp_share_binder = True
+                    if hover_entity.id != drag_entity.id:
+                        if id.value:
+                            drag_over_id(id.value, rel_x-scale/4, scale/2)
                         else:
-                            id.temp_share_binder = False
+                            id.temp_value = drag_entity.id #reset is also in check_hover
+                            if rel_x < scale/4 and id.binds_id == None:
+                                id.temp_share_binder = True
+                            else:
+                                id.temp_share_binder = False
 
             assert hover_entity.colliding == True # mouse cursor should not be able to be outside of drag_entity
             drag_over_id(hover_entity.id, -xoffset-hover_entity.x, scale=hover_entity.scale)
@@ -477,6 +482,21 @@ def on_mouse_release(x, y, button, modifiers):
         if id.temp_share_binder == True:
             id.share_binder = True
             id.temp_share_binder = False
+
+    for entity in entities:
+
+        if entity.id.temp_apply:
+
+            entity.id.temp_apply = False
+
+            apply_id = ID(color_id=0)
+
+            apply_id.value = entity.id
+            entity.id.parent = apply_id
+            entity.id = apply_id
+
+            apply_id.argument = drag_entity.id
+            drag_entity.id.parent = apply_id
 
     drag_entity = None
 
