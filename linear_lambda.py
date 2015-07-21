@@ -12,7 +12,6 @@ class ID:
 
     def __init__(self, color_id=None):
 
-        self.parent = None
         self.value = None
         self.share_binder = False
         self.argument = None
@@ -74,7 +73,7 @@ class ID:
         elif for_argument:
             return xoffset+scale/4, yoffset+scale/4, scale/3
 
-    def get_hover_id(self, rel_mouse_x, rel_mouse_y, scale):
+    def get_hover_id_relative(self, rel_mouse_x, rel_mouse_y, scale):
 
         base_y = scale/6
         top_y = scale*5/6
@@ -84,44 +83,45 @@ class ID:
 
         if rel_mouse_y > base_y and rel_mouse_y < top_y and rel_mouse_x > sep_x and rel_mouse_x < right_x:
             
-            sub_hover = None
-
             if self.value:
                 value_x, value_y, value_scale = self.get_offset_and_scale(scale, for_value=True)
-                sub_hover = self.value.get_hover_id(rel_mouse_x-value_x, rel_mouse_y-value_y, value_scale)
+                hover, relation = self.value.get_hover_id_relative(rel_mouse_x-value_x, rel_mouse_y-value_y, value_scale)
 
-            if sub_hover == None and self.argument != None:
-                argument_x, argument_y, argument_scale = self.get_offset_and_scale(scale, for_argument=True)
-                sub_hover = self.argument.get_hover_id(rel_mouse_x-argument_x, rel_mouse_y-argument_y, argument_scale)
+                if relation == -1 and self.argument:
+                    argument_x, argument_y, argument_scale = self.get_offset_and_scale(scale, for_argument=True)
+                    hover, relation = self.argument.get_hover_id_relative(rel_mouse_x-argument_x, rel_mouse_y-argument_y, argument_scale)
 
+                    if relation == -1:
+                        return self, 0
 
-            if sub_hover == None:
-                return self
+                    elif relation == 0:
+                        return self, 2 #for argument
+
+                    else:
+                        return hover, relation
+
+                elif relation == 0:
+                    return self, 1 #for value
+
+                else:
+                    return hover, relation
+
             else:
-                return sub_hover
-
-    #def remove_value(self):
-
-    #    if self.argument:
-    #        self.value = self.argument
-    #    else:
-    #        self.value = None
-
-    def assign(self, other):
-
-        if self.value:
-            pass #no assignment can take place
+                return self, 0
 
         else:
-            self.value = other
+            return None, -1
 
-    #def unassign(self):
-    #    if self.kind == ID.VARIABLE:
-    #        self.value.parent = None
-    #        self.value = None
-    #    elif self.parent.kind == ID.VARIABLE and self.parent.value == self:
-    #        self.parent.value = None
-    #        self.parent = None
+    def is_ancestor_of(self, other_id):
+
+        if other_id == self.value or other_id == self.argument:
+            return True
+
+        else:
+            return (
+                    ( self.value != None     and  self.value.is_ancestor_of(other_id) )
+                 or ( self.argument != None  and  self.argument.is_ancestor_of(other_id) )
+                 )
 
 class Entity:
 
@@ -179,14 +179,14 @@ class Entity:
         self.x = x+(self.x-x)*factor
         self.y = y+(self.y-y)*factor
 
-    def is_ancestor(self, of):
+    #def is_ancestor(self, of):
 
-        if of == None:
-            return False
-        elif of in self.childs:
-            return True
-        else:
-            return self.is_ancestor(of.parent)
+    #    if of == None:
+    #        return False
+    #    elif of in self.childs:
+    #        return True
+    #    else:
+    #        return self.is_ancestor(of.parent)
 
 
 
@@ -258,9 +258,9 @@ def check_hover():
     for entity in entities:
         if entity != drag_entity and not entity.being_created:
             x, y, scale = entity.transform_to_local_coordinates(xoffset, yoffset, scale_factor)
-            entity.hover_over = entity.id.get_hover_id(window.width/2-x, window.height/2-y, scale)
+            entity.hover_over = entity.id.get_hover_id_relative(window.width/2-x, window.height/2-y, scale)
 
-            if entity.hover_over != None:
+            if entity.hover_over[1] != -1:
                 hover_entity = entity
 
     if hover_entity != old_hover_entity and old_hover_entity != None:
@@ -324,31 +324,33 @@ def on_mouse_press(x, y, button, modifiers):
             drag_entity = new_entity
 
         else:
-            if hover_entity.id == hover_entity.hover_over: # <=> hover_entity.id.parent == None [read: an id with a parent can not be assigned to an entity] #?ds
+            if hover_entity.hover_over[1] == 0:
+                assert hover_entity.id == hover_entity.hover_over[0] # <=> hover_entity.id.parent == None [read: an id with a parent can not be assigned to an entity] #?ds
                 drag_entity = hover_entity
 
             else:
-                free_id = hover_entity.hover_over
+                parent = hover_entity.hover_over[0]
+                parent.share_binder = False
+
+                if hover_entity.hover_over[1] == 1:
+                    free_id = parent.value
+
+                    if parent.argument:
+                        parent.value = parent.argument
+                        parent.argument = None
+                        parent.color_id = 0 #make it invisible
+
+                    else:
+                        parent.value = None
+                
+                elif hover_entity.hover_over[1] == 2:
+                    free_id = parent.argument
+                    parent.argument = None
+                    parent.color_id = 0 #make it invisible
+
                 new_entity = Entity(x=-xoffset, y=-yoffset, scale=hover_entity.scale, var_id=free_id)
                 drag_entity = new_entity
                 entities.append(new_entity)
-
-                if free_id == free_id.parent.value:
-
-                    if free_id.parent.argument:
-                        free_id.parent.value = free_id.parent.argument
-                        free_id.parent.argument = None
-                        free_id.parent.color_id = 0#?
-                    else:
-                        free_id.parent.value = None
-
-                elif free_id == free_id.parent.argument: # => free_id.parent.kind == ID.APPLICATION #?ds
-                    #effectively replace free_id.parent with free_id.parent.value in all occurences
-                    free_id.parent.argument = None
-                    free_id.parent.color_id = 0 # make it an 'invisible' variable that just passes the value data through
-
-                free_id.parent.share_binder = False
-                free_id.parent = None
 
     if hover_entity == None:
         assert len(available_color_ids) > 0
@@ -477,7 +479,6 @@ def on_mouse_release(x, y, button, modifiers):
         if id.temp_value:
             id.value = id.temp_value
             id.temp_value = None
-            id.value.parent = id
 
         if id.temp_share_binder == True:
             id.share_binder = True
@@ -492,11 +493,9 @@ def on_mouse_release(x, y, button, modifiers):
             apply_id = ID(color_id=0)
 
             apply_id.value = entity.id
-            entity.id.parent = apply_id
             entity.id = apply_id
 
             apply_id.argument = drag_entity.id
-            drag_entity.id.parent = apply_id
 
     drag_entity = None
 
