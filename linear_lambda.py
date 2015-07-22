@@ -97,13 +97,16 @@ class ID:
                     elif relation == 0:
                         return self, 2 #for argument
 
-                    else:
+                    elif relation > 0:
                         return hover, relation
+
+                elif relation == -1:
+                    return self, 0
 
                 elif relation == 0:
                     return self, 1 #for value
 
-                else:
+                elif relation > 0:
                     return hover, relation
 
             else:
@@ -423,13 +426,15 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
         if hover_entity:
 
             def drag_over_id(id, rel_x, scale):
+                id.temp_value = None
+                id.temp_share_binder = None
+                id.temp_apply = None
+
                 if rel_x < 0:
-                    #reset temp_value, just in case
-                    id.temp_value = None
                     #apply?
                     id.temp_apply = True
                 else:
-                    if hover_entity.id != drag_entity.id:
+                    if not (drag_entity.id.is_ancestor_of(hover_entity.id) or drag_entity.id == hover_entity.id):
                         if id.value:
                             drag_over_id(id.value, rel_x-scale/4, scale/2)
                         else:
@@ -448,32 +453,12 @@ def on_mouse_release(x, y, button, modifiers):
 
     global drag_entity
 
-    stable_entities = entities[:]
-    for entity in stable_entities:
+    if drag_entity:
+        if drag_entity.delete_on_release > 0 or drag_entity.being_created:
+            drag_entity._del()
 
-        if entity == drag_entity:
-
-            if entity.delete_on_release > 0:
-                entity._del()
-
-            if hover_entity != None:
-
-                pass
-
-
-        elif entity.being_created:
-
-            if entity.kind == Entity.VARIABLE:
-                entity._del()
-
-            elif entity.kind == Entity.ABSTRACTION:
-                entity.being_created = False
-                available_ids.append(entity.var_id)
-                vars_by_id[entity.var_id].remove(entity)
-                entity.var_id = None
-
-        else:
-            entity.colliding = False
+    for entity in entities:
+        entity.colliding = False
 
     for id in IDs:
         if id.temp_value:
