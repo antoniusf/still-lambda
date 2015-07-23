@@ -151,6 +151,8 @@ class Entity:
     def _del(self):
 
         entities.remove(self)
+        if self.being_created:
+            available_color_ids.append(self.id.color_id)
 
     def transform_to_local_coordinates(self, xoffset, yoffset, scale_factor):
         return ((self.x-0.5*self.scale+xoffset)*scale_factor+window.width/2,
