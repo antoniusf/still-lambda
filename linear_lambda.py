@@ -412,9 +412,10 @@ def on_mouse_drag(x, y, dx, dy, buttons, modifiers):
             if entity != drag_entity:
                 xdiff = abs(entity.x-drag_entity.x)
                 ydiff = abs(entity.y-drag_entity.y)
-                min_diff = (entity.scale+drag_entity.scale)/2
+                min_x_diff = (entity.scale+drag_entity.scale)/2
+                min_y_diff = (entity.scale+drag_entity.scale)/3
 
-                if xdiff < min_diff and ydiff < min_diff:
+                if xdiff < min_x_diff and ydiff < min_y_diff:
 
                     if entity.colliding == False:
                         entity.colliding = True
